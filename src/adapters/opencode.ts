@@ -61,7 +61,7 @@ export class OpenCodeAdapter implements AgentAdapter {
           const rawParts = partsStmt.all(s.id) as Array<{ id: string; message_id: string; time_created: number; data: string }>;
 
           // Group parts by message_id
-          const partsByMsg = new Map<string, Array<{ type?: string; text?: string }>>();
+          const partsByMsg = new Map<string, Array<any>>();
           for (const p of rawParts) {
             try {
               const partData = JSON.parse(p.data);
@@ -93,10 +93,21 @@ export class OpenCodeAdapter implements AgentAdapter {
 
             for (const part of parts) {
               if (part.text) {
-                contentText += (contentText ? '\n' : '') + part.text;
+                contentText += (contentText ? '\n\n' : '') + part.text;
               }
               if (part.type === 'tool' || part.type === 'tool_use' || part.type === 'tool_call') {
                 hasToolCalls = true;
+                const toolName = part.tool || part.name || 'tool';
+                const input = part.state?.input || part.input;
+                const output = part.state?.output || part.output;
+                let toolStr = `[Tool Call: ${toolName}]`;
+                if (input) {
+                  toolStr += `\nInput: ${typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input)}`;
+                }
+                if (output) {
+                  toolStr += `\nOutput: ${typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output).trim()}`;
+                }
+                contentText += (contentText ? '\n\n' : '') + toolStr;
               }
             }
 

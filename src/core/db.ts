@@ -160,7 +160,7 @@ export class VaultDB {
 
   public search(
     query: string,
-    options: { agent?: string; machine?: string; workspace?: string; limit?: number } = {}
+    options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: number } = {}
   ): SearchResult[] {
     const limit = options.limit || 20;
 
@@ -205,6 +205,10 @@ export class VaultDB {
       sql += ` AND s.workspace LIKE ?`;
       params.push(`%${options.workspace}%`);
     }
+    if (options.role) {
+      sql += ` AND LOWER(f.role) = ?`;
+      params.push(options.role.toLowerCase());
+    }
 
     sql += ` ORDER BY rank LIMIT ?`;
     params.push(limit);
@@ -242,7 +246,10 @@ export class VaultDB {
     return this.db.prepare(sql).all(...params) as SessionSummary[];
   }
 
-  public getSession(id: string): { session: SessionSummary; messages: any[] } | null {
+  public getSession(
+    id: string,
+    options: { role?: string; noTools?: boolean } = {}
+  ): { session: SessionSummary; messages: any[] } | null {
     const session = this.db.prepare(`
       SELECT 
         id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
@@ -253,12 +260,24 @@ export class VaultDB {
 
     if (!session) return null;
 
-    const messages = this.db.prepare(`
+    let msgSql = `
       SELECT id, role, content, timestamp, step_index AS stepIndex, has_tool_calls AS hasToolCalls
       FROM messages
       WHERE session_id = ?
-      ORDER BY step_index ASC, timestamp ASC
-    `).all(id);
+    `;
+    const msgParams: unknown[] = [id];
+
+    if (options.role) {
+      msgSql += ` AND LOWER(role) = ?`;
+      msgParams.push(options.role.toLowerCase());
+    }
+    if (options.noTools) {
+      msgSql += ` AND LOWER(role) != 'tool'`;
+    }
+
+    msgSql += ` ORDER BY step_index ASC, timestamp ASC`;
+
+    const messages = this.db.prepare(msgSql).all(...msgParams);
 
     return { session, messages };
   }

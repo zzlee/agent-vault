@@ -11,11 +11,24 @@ import {
   formatSessionList,
   formatSearchResults,
   formatSessionDetail,
+  formatSyncDryRun,
 } from './formatters.js';
 
-export async function handleSync(options: { agent?: AgentType }): Promise<void> {
+export async function handleSync(options: { agent?: AgentType; dryRun?: boolean }): Promise<void> {
   const db = new VaultDB();
   const syncer = new Syncer(db);
+
+  if (options.dryRun) {
+    console.log(pc.cyan('🔍 Analyzing local agent conversation histories (dry-run)...'));
+    const start = Date.now();
+    const result = await syncer.sync(options);
+    const duration = ((Date.now() - start) / 1000).toFixed(2);
+
+    console.log(formatSyncDryRun(result));
+    console.log(pc.dim(`\nDry run completed in ${duration}s.`));
+    db.close();
+    return;
+  }
 
   console.log(pc.cyan('🔄 Syncing conversation histories from local agents...'));
   const start = Date.now();
@@ -53,7 +66,7 @@ export function handleList(options: { agent?: string; machine?: string; workspac
 
 export function handleSearch(
   query: string,
-  options: { agent?: string; machine?: string; workspace?: string; limit?: string }
+  options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: string }
 ): void {
   const db = new VaultDB();
   const limit = options.limit ? parseInt(options.limit, 10) : 20;
@@ -62,6 +75,7 @@ export function handleSearch(
     agent: options.agent,
     machine: options.machine,
     workspace: options.workspace,
+    role: options.role,
     limit,
   });
 
@@ -71,10 +85,13 @@ export function handleSearch(
 
 export function handleShow(
   id: string,
-  options: { json?: boolean; export?: string }
+  options: { json?: boolean; export?: string; role?: string; noTools?: boolean }
 ): void {
   const db = new VaultDB();
-  const sessionData = db.getSession(id);
+  const sessionData = db.getSession(id, {
+    role: options.role,
+    noTools: options.noTools,
+  });
 
   if (!sessionData) {
     console.error(pc.red(`Error: Session with id "${id}" not found.`));

@@ -141,10 +141,16 @@ export class AgyAdapter implements AgentAdapter {
           textContent = item.content || '';
           if (Array.isArray(item.tool_calls) && item.tool_calls.length > 0) {
             hasToolCalls = true;
+            const tcTexts = item.tool_calls.map((tc: any) => {
+              const name = tc.name || 'tool';
+              const params = tc.parameters ? JSON.stringify(tc.parameters, null, 2) : '';
+              return `[Tool Call: ${name}]${params ? `\nInput: ${params}` : ''}`;
+            });
+            textContent += (textContent ? '\n\n' : '') + tcTexts.join('\n\n');
           }
         } else if (type === 'GENERIC' && source === 'MODEL') {
           role = 'tool';
-          textContent = item.content || '';
+          textContent = item.content ? `[Tool Result]\n${item.content}` : '';
         }
 
         if (textContent.trim()) {

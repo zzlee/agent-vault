@@ -24,8 +24,12 @@ export function createCli(): Command {
     .command('sync')
     .description('Sync conversation histories from local AI agents into vault')
     .option('-a, --agent <type>', 'Specific agent to sync (pi, opencode, agy, freebuff, hermes)')
+    .option('-d, --dry-run', 'Preview changes without modifying files or database')
     .action(async (options) => {
-      await handleSync({ agent: options.agent as AgentType | undefined });
+      await handleSync({
+        agent: options.agent as AgentType | undefined,
+        dryRun: options.dryRun,
+      });
     });
 
   program
@@ -43,6 +47,7 @@ export function createCli(): Command {
     .command('search <query>')
     .description('Full-text search messages across all sessions and agents using SQLite FTS5')
     .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-r, --role <type>', 'Filter by message role (user, assistant, tool)')
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Maximum number of matches', '20')
@@ -53,6 +58,8 @@ export function createCli(): Command {
   program
     .command('show <id>')
     .description('Show full conversation messages for a given session ID')
+    .option('-r, --role <type>', 'Filter messages by role (user, assistant, tool)')
+    .option('--no-tools', 'Hide tool execution outputs from view')
     .option('--json', 'Output raw JSON format')
     .option('-e, --export <path>', 'Export as Markdown (use "md" for stdout or specify a filename)')
     .action((id, options) => {

@@ -99,13 +99,25 @@ export class PiAdapter implements AgentAdapter {
           if (Array.isArray(rawMsg.content)) {
             for (const part of rawMsg.content) {
               if (part.type === 'text' && typeof part.text === 'string') {
-                textContent += (textContent ? '\n' : '') + part.text;
+                textContent += (textContent ? '\n\n' : '') + part.text;
               } else if (part.type === 'toolCall' || part.type === 'toolUse') {
                 hasToolCalls = true;
+                const toolName = part.name || part.tool || 'tool';
+                const toolArgs = part.arguments || part.args || part.input;
+                let argsStr = '';
+                if (toolArgs) {
+                  argsStr = typeof toolArgs === 'object' ? JSON.stringify(toolArgs, null, 2) : String(toolArgs);
+                }
+                const callText = `[Tool Call: ${toolName}]${argsStr ? `\nInput: ${argsStr}` : ''}`;
+                textContent += (textContent ? '\n\n' : '') + callText;
               }
             }
           } else if (typeof rawMsg.content === 'string') {
             textContent = rawMsg.content;
+          }
+
+          if (role === 'tool' && rawMsg.toolName && !textContent.startsWith('[Tool Result')) {
+            textContent = `[Tool Result: ${rawMsg.toolName}]\n${textContent}`;
           }
 
           if (textContent.trim()) {

@@ -17,23 +17,27 @@ export interface McpServerOptions {
 export function createMcpServer(options: McpServerOptions = {}) {
   const server = new McpServer({
     name: 'agent-vault',
-    version: '1.0.0',
+    version: '1.1.0',
   });
 
   const db = new VaultDB(options.dbPath);
 
+  const AgentEnum = z.enum(['pi', 'opencode', 'agy', 'freebuff', 'hermes']);
+  const RoleEnum = z.enum(['user', 'assistant', 'tool', 'system']);
+
   // Tool 1: vault_search
   server.tool(
     'vault_search',
-    'Search conversation history across all agents (pi, opencode, agy) and machines using SQLite FTS5',
+    'Search conversation history across all agents (pi, opencode, agy, freebuff, hermes) and machines using SQLite FTS5',
     {
       query: z.string().describe('Search keyword or phrase'),
-      agent: z.enum(['pi', 'opencode', 'agy']).optional().describe('Filter by agent name'),
+      agent: AgentEnum.optional().describe('Filter by agent name'),
+      role: RoleEnum.optional().describe('Filter by message role (user, assistant, tool)'),
       workspace: z.string().optional().describe('Filter by workspace substring'),
       limit: z.number().optional().default(15).describe('Max results to return (default 15)'),
     },
-    async ({ query, agent, workspace, limit }) => {
-      const results = db.search(query, { agent, workspace, limit });
+    async ({ query, agent, role, workspace, limit }) => {
+      const results = db.search(query, { agent, role, workspace, limit });
       return {
         content: [
           {
@@ -51,9 +55,11 @@ export function createMcpServer(options: McpServerOptions = {}) {
     'Retrieve full conversation messages for a specific session ID',
     {
       sessionId: z.string().describe('Unique session ID (e.g. pi_host_xxx)'),
+      role: RoleEnum.optional().describe('Filter messages by role (user, assistant, tool)'),
+      noTools: z.boolean().optional().describe('Hide tool execution outputs from view'),
     },
-    async ({ sessionId }) => {
-      const data = db.getSession(sessionId);
+    async ({ sessionId, role, noTools }) => {
+      const data = db.getSession(sessionId, { role, noTools });
       if (!data) {
         return {
           isError: true,
@@ -81,7 +87,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     'vault_list_sessions',
     'List recent conversation sessions across agents and workspaces',
     {
-      agent: z.enum(['pi', 'opencode', 'agy']).optional().describe('Filter by agent name'),
+      agent: AgentEnum.optional().describe('Filter by agent name'),
       workspace: z.string().optional().describe('Filter by workspace substring'),
       limit: z.number().optional().default(20).describe('Max sessions to return (default 20)'),
     },

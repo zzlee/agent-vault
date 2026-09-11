@@ -104,6 +104,11 @@ Extracts and normalizes local conversation histories from all available agents i
 # Sync all available agents on current machine
 agent-vault sync
 
+# Dry-run: preview how many new/updated sessions and messages will be added without modifying files
+agent-vault sync --dry-run
+agent-vault sync -d
+agent-vault sync -a freebuff -d
+
 # Sync only a specific agent (pi, opencode, agy, freebuff, hermes)
 agent-vault sync -a freebuff
 agent-vault sync --agent pi
@@ -117,6 +122,11 @@ Performs instantaneous Full-Text Search across message bodies, titles, and works
 ```bash
 # Search for keywords across all sessions
 agent-vault search "docker compose"
+
+# Filter by message role (user, assistant, tool)
+agent-vault search "git push" -r user          # Search only what you (user) asked
+agent-vault search "syntax error" -r assistant # Search assistant explanations
+agent-vault search "exit code 1" -r tool       # Search terminal/tool outputs
 
 # Filter by agent
 agent-vault search "error" -a opencode
@@ -161,13 +171,18 @@ Inspects or exports the full message transcript of a specific session.
 # View human-friendly colored transcript in terminal
 agent-vault show freebuff_my-thinkpad-7ca7_gridsight__2026-08-31T04-52-41.015Z
 
+# Filter transcript by role (e.g. only view user prompts trajectory)
+agent-vault show <session-id> -r user
+
+# Hide tool execution outputs to view a clean conversational dialog
+agent-vault show <session-id> --no-tools
+
 # Output raw normalized JSON (useful for piping into jq)
 agent-vault show <session-id> --json
 
 # Print session as Markdown to stdout
 agent-vault show <session-id> -e md
 
-# Export session transcript directly to a Markdown file
 agent-vault show <session-id> -e session_notes.md
 ```
 
