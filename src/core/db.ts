@@ -19,6 +19,18 @@ export class VaultDB {
   }
 
   private initSchema(): void {
+    // In-place schema migration for older databases
+    const tableExists = this.db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'`).get();
+    if (tableExists) {
+      const cols = this.db.prepare(`PRAGMA table_info(sessions)`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'machine_id')) {
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN machine_id TEXT NOT NULL DEFAULT '';`);
+      }
+      if (!cols.some((c) => c.name === 'machine_name')) {
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN machine_name TEXT NOT NULL DEFAULT '';`);
+      }
+    }
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
