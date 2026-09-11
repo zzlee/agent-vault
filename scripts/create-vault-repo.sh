@@ -364,8 +364,13 @@ fi
 # Initial commit
 git add .
 if [ -n "$(git status --porcelain)" ]; then
-  git commit -m "feat(vault): initialize data repository and migrate ${MIGRATED_COUNT} conversation sessions"
-  echo -e "  ${GREEN}✓ Created initial commit with ${MIGRATED_COUNT} sessions!${RESET}"
+  if [ "$MIGRATED_COUNT" -gt 0 ]; then
+    git commit -m "feat(vault): initialize data repository and migrate ${MIGRATED_COUNT} conversation sessions"
+    echo -e "  ${GREEN}✓ Created initial commit with ${MIGRATED_COUNT} migrated sessions!${RESET}"
+  else
+    git commit -m "feat(vault): initialize empty conversation data repository"
+    echo -e "  ${GREEN}✓ Created initial commit with clean vault structure!${RESET}"
+  fi
 else
   echo -e "  ${DIM}Nothing new to commit.${RESET}"
 fi
