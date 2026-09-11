@@ -1,0 +1,46 @@
+{
+  "name": "agent-vault",
+  "version": "0.1.0",
+  "description": "Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (pi, opencode, agy)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agent-vault": "bin/agent-vault.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "node bin/agent-vault.js",
+    "setup": "./scripts/init.sh",
+    "reindex": "node bin/agent-vault.js reindex",
+    "clean": "rm -rf dist .cache"
+  },
+  "keywords": [
+    "ai-agent",
+    "conversation-history",
+    "cli",
+    "pi",
+    "opencode",
+    "agy",
+    "sqlite",
+    "fts5"
+  ],
+  "author": "zzlee",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

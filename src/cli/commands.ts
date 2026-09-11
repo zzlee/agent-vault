@@ -1,0 +1,181 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { execSync } from 'node:child_process';
+import os from 'node:os';
+import pc from 'picocolors';
+import { VaultDB } from '../core/db.js';
+import { Syncer } from '../core/syncer.js';
+import { Indexer } from '../core/indexer.js';
+import type { AgentType } from '../core/types.js';
+import {
+  formatSessionList,
+  formatSearchResults,
+  formatSessionDetail,
+} from './formatters.js';
+
+export async function handleSync(options: { agent?: AgentType }): Promise<void> {
+  const db = new VaultDB();
+  const syncer = new Syncer(db);
+
+  console.log(pc.cyan('🔄 Syncing conversation histories from local agents...'));
+  const start = Date.now();
+  const result = await syncer.sync(options);
+  const duration = ((Date.now() - start) / 1000).toFixed(2);
+
+  console.log(
+    pc.green(
+      `✓ Synced ${result.addedOrUpdated} sessions in ${duration}s ` +
+        `(${pc.green(`pi: ${result.agentCounts.pi}`)}, ` +
+        `${pc.magenta(`opencode: ${result.agentCounts.opencode}`)}, ` +
+        `${pc.blue(`agy: ${result.agentCounts.agy}`)})`
+    )
+  );
+
+  db.close();
+}
+
+export function handleList(options: { agent?: string; workspace?: string; limit?: string }): void {
+  const db = new VaultDB();
+  const limit = options.limit ? parseInt(options.limit, 10) : 25;
+
+  const sessions = db.listSessions({
+    agent: options.agent,
+    workspace: options.workspace,
+    limit,
+  });
+
+  console.log(formatSessionList(sessions));
+  db.close();
+}
+
+export function handleSearch(
+  query: string,
+  options: { agent?: string; workspace?: string; limit?: string }
+): void {
+  const db = new VaultDB();
+  const limit = options.limit ? parseInt(options.limit, 10) : 20;
+
+  const results = db.search(query, {
+    agent: options.agent,
+    workspace: options.workspace,
+    limit,
+  });
+
+  console.log(formatSearchResults(results));
+  db.close();
+}
+
+export function handleShow(
+  id: string,
+  options: { json?: boolean; export?: string }
+): void {
+  const db = new VaultDB();
+  const sessionData = db.getSession(id);
+
+  if (!sessionData) {
+    console.error(pc.red(`Error: Session with id "${id}" not found.`));
+    db.close();
+    process.exit(1);
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(sessionData, null, 2));
+    db.close();
+    return;
+  }
+
+  if (options.export) {
+    let out = `# ${sessionData.session.title}\n\n`;
+    out += `- **ID:** \`${sessionData.session.id}\`\n`;
+    out += `- **Agent:** \`${sessionData.session.agent}\`\n`;
+    out += `- **Host:** \`${sessionData.session.hostname}\`\n`;
+    out += `- **Workspace:** \`${sessionData.session.workspace || 'N/A'}\`\n`;
+    out += `- **Created:** ${sessionData.session.createdAt}\n`;
+    out += `- **Updated:** ${sessionData.session.updatedAt}\n\n---\n\n`;
+
+    for (const msg of sessionData.messages) {
+      out += `### [${msg.role.toUpperCase()}] ${msg.timestamp ? `_(${msg.timestamp})_` : ''}\n\n`;
+      out += `${msg.content}\n\n---\n\n`;
+    }
+
+    if (options.export === 'md' || options.export === 'markdown') {
+      console.log(out);
+    } else {
+      fs.writeFileSync(options.export, out, 'utf-8');
+      console.log(pc.green(`✓ Exported session to ${options.export}`));
+    }
+    db.close();
+    return;
+  }
+
+  console.log(formatSessionDetail(sessionData.session, sessionData.messages));
+  db.close();
+}
+
+export async function handleReindex(): Promise<void> {
+  const db = new VaultDB();
+  const indexer = new Indexer(db);
+
+  console.log(pc.cyan('⚡ Re-indexing all stored sessions from data/sessions/ into SQLite FTS5...'));
+  const start = Date.now();
+  const { indexedCount, errors } = await indexer.reindexAll();
+  const duration = ((Date.now() - start) / 1000).toFixed(2);
+
+  console.log(
+    pc.green(`✓ Re-indexed ${indexedCount} sessions in ${duration}s` + (errors > 0 ? pc.yellow(` (${errors} errors)`) : ''))
+  );
+
+  db.close();
+}
+
+export function handleStats(): void {
+  const db = new VaultDB();
+  const stats = db.getStats();
+
+  console.log(pc.bold(pc.cyan('🛡️  Agent Vault Statistics:')));
+  console.log(`  ${pc.bold('Total Sessions:')} ${stats.totalSessions}`);
+  console.log(`  ${pc.bold('Total Messages:')} ${stats.totalMessages}`);
+  console.log(`  ${pc.bold('Sessions by Agent:')}`);
+  for (const [agent, count] of Object.entries(stats.agents)) {
+    console.log(`    - ${agent}: ${count}`);
+  }
+
+  db.close();
+}
+
+export async function handlePush(): Promise<void> {
+  // First sync local agent conversations
+  await handleSync({});
+
+  console.log(pc.cyan('🚀 Committing and pushing to Git remote repository...'));
+  const hostname = os.hostname();
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  try {
+    execSync('git add data/', { stdio: 'inherit' });
+    const status = execSync('git status --porcelain data/', { encoding: 'utf-8' });
+    if (!status.trim()) {
+      console.log(pc.yellow('Everything up-to-date in data/. Nothing new to push.'));
+      return;
+    }
+
+    execSync(`git commit -m "sync(vault): ${hostname} conversations at ${dateStr}"`, { stdio: 'inherit' });
+    execSync('git push', { stdio: 'inherit' });
+    console.log(pc.green('✓ Successfully pushed conversations to remote repository!'));
+  } catch (err: any) {
+    console.error(pc.red(`Push failed: ${err.message}`));
+    process.exit(1);
+  }
+}
+
+export async function handlePull(): Promise<void> {
+  console.log(pc.cyan('📥 Pulling updates from Git remote repository...'));
+  try {
+    execSync('git pull', { stdio: 'inherit' });
+    await handleReindex();
+    console.log(pc.green('✓ Pull and re-index completed successfully!'));
+  } catch (err: any) {
+    console.error(pc.red(`Pull failed: ${err.message}`));
+    process.exit(1);
+  }
+}
