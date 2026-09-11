@@ -23,6 +23,8 @@ export class VaultDB {
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         agent TEXT NOT NULL,
+        machine_id TEXT NOT NULL,
+        machine_name TEXT NOT NULL,
         hostname TEXT NOT NULL,
         platform TEXT NOT NULL,
         native_id TEXT NOT NULL,
@@ -46,6 +48,8 @@ export class VaultDB {
       );
 
       CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent);
+      CREATE INDEX IF NOT EXISTS idx_sessions_machine_id ON sessions(machine_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_machine_name ON sessions(machine_name);
       CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace);
       CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
@@ -67,13 +71,15 @@ export class VaultDB {
       // 1. Upsert session row
       const upsertSessionStmt = this.db.prepare(`
         INSERT INTO sessions (
-          id, agent, hostname, platform, native_id, title, workspace,
+          id, agent, machine_id, machine_name, hostname, platform, native_id, title, workspace,
           created_at, updated_at, message_count, file_path
         ) VALUES (
-          @id, @agent, @hostname, @platform, @native_id, @title, @workspace,
+          @id, @agent, @machine_id, @machine_name, @hostname, @platform, @native_id, @title, @workspace,
           @created_at, @updated_at, @message_count, @file_path
         )
         ON CONFLICT(id) DO UPDATE SET
+          machine_id = excluded.machine_id,
+          machine_name = excluded.machine_name,
           title = excluded.title,
           workspace = excluded.workspace,
           updated_at = excluded.updated_at,
@@ -84,8 +90,10 @@ export class VaultDB {
       upsertSessionStmt.run({
         id: session.id,
         agent: session.agent,
-        hostname: session.machine.hostname,
-        platform: session.machine.platform,
+        machine_id: session.machine?.id || session.machine?.hostname || 'unknown',
+        machine_name: session.machine?.name || session.machine?.hostname || 'unknown',
+        hostname: session.machine?.hostname || 'unknown',
+        platform: session.machine?.platform || '',
         native_id: session.session.native_id,
         title: session.session.title || '(untitled)',
         workspace: session.session.workspace || '',
@@ -140,7 +148,7 @@ export class VaultDB {
 
   public search(
     query: string,
-    options: { agent?: string; workspace?: string; limit?: number } = {}
+    options: { agent?: string; machine?: string; workspace?: string; limit?: number } = {}
   ): SearchResult[] {
     const limit = options.limit || 20;
 
@@ -159,7 +167,8 @@ export class VaultDB {
       SELECT 
         s.id AS sessionId,
         s.agent,
-        s.hostname,
+        s.machine_id AS machineId,
+        s.machine_name AS machineName,
         s.title,
         s.workspace,
         s.updated_at AS updatedAt,
@@ -176,6 +185,10 @@ export class VaultDB {
       sql += ` AND s.agent = ?`;
       params.push(options.agent);
     }
+    if (options.machine) {
+      sql += ` AND (s.machine_id LIKE ? OR s.machine_name LIKE ?)`;
+      params.push(`%${options.machine}%`, `%${options.machine}%`);
+    }
     if (options.workspace) {
       sql += ` AND s.workspace LIKE ?`;
       params.push(`%${options.workspace}%`);
@@ -187,11 +200,11 @@ export class VaultDB {
     return this.db.prepare(sql).all(...params) as SearchResult[];
   }
 
-  public listSessions(options: { agent?: string; workspace?: string; limit?: number } = {}): SessionSummary[] {
+  public listSessions(options: { agent?: string; machine?: string; workspace?: string; limit?: number } = {}): SessionSummary[] {
     const limit = options.limit || 25;
     let sql = `
       SELECT 
-        id, agent, hostname, native_id AS nativeId, title, workspace,
+        id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
         created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount
       FROM sessions
       WHERE 1=1
@@ -201,6 +214,10 @@ export class VaultDB {
     if (options.agent) {
       sql += ` AND agent = ?`;
       params.push(options.agent);
+    }
+    if (options.machine) {
+      sql += ` AND (machine_id LIKE ? OR machine_name LIKE ?)`;
+      params.push(`%${options.machine}%`, `%${options.machine}%`);
     }
     if (options.workspace) {
       sql += ` AND workspace LIKE ?`;
@@ -216,7 +233,7 @@ export class VaultDB {
   public getSession(id: string): { session: SessionSummary; messages: any[] } | null {
     const session = this.db.prepare(`
       SELECT 
-        id, agent, hostname, native_id AS nativeId, title, workspace,
+        id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
         created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount, file_path AS filePath
       FROM sessions
       WHERE id = ?
@@ -234,7 +251,7 @@ export class VaultDB {
     return { session, messages };
   }
 
-  public getStats(): { totalSessions: number; totalMessages: number; agents: Record<string, number> } {
+  public getStats(): { totalSessions: number; totalMessages: number; agents: Record<string, number>; machines: Record<string, number> } {
     const countRow = this.db.prepare(`
       SELECT 
         (SELECT COUNT(*) FROM sessions) as totalSessions,
@@ -245,15 +262,25 @@ export class VaultDB {
       SELECT agent, COUNT(*) as count FROM sessions GROUP BY agent
     `).all() as Array<{ agent: string; count: number }>;
 
+    const machineRows = this.db.prepare(`
+      SELECT machine_name, COUNT(*) as count FROM sessions GROUP BY machine_name
+    `).all() as Array<{ machine_name: string; count: number }>;
+
     const agents: Record<string, number> = {};
     for (const row of agentRows) {
       agents[row.agent] = row.count;
+    }
+
+    const machines: Record<string, number> = {};
+    for (const row of machineRows) {
+      machines[row.machine_name] = row.count;
     }
 
     return {
       totalSessions: countRow.totalSessions,
       totalMessages: countRow.totalMessages,
       agents,
+      machines,
     };
   }
 

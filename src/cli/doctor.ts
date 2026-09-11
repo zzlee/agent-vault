@@ -3,14 +3,17 @@ import path from 'node:path';
 import os from 'node:os';
 import pc from 'picocolors';
 import Database from 'better-sqlite3';
+import { getMachineInfo } from '../core/machine.js';
 
 export function handleDoctor(): void {
   console.log(pc.bold(pc.cyan('🩺 Agent Vault System & Adapter Diagnostic\n')));
 
   const home = os.homedir();
-  console.log(`${pc.gray('OS:')} ${os.type()} ${os.release()} (${os.arch()})`);
-  console.log(`${pc.gray('Node:')} ${process.version}`);
-  console.log(`${pc.gray('Hostname:')} ${os.hostname()}`);
+  const machine = getMachineInfo();
+  console.log(`${pc.gray('OS:')}         ${os.type()} ${os.release()} (${os.arch()})`);
+  console.log(`${pc.gray('Node:')}       ${process.version}`);
+  console.log(`${pc.gray('Machine ID:')} ${pc.bold(pc.green(machine.id))}`);
+  console.log(`${pc.gray('Machine:')}    ${machine.name} (hostname: ${machine.hostname})`);
   console.log('');
 
   // 1. Pi Agent Check

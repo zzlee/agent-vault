@@ -35,15 +35,18 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 
 All adapters must normalize agent-specific data structures into this schema before writing to `data/sessions/`:
 
-```typescript
+interface MachineInfo {
+  id: string;        // Collision-free ID: <machine_name>-<short_hardware_hash>
+  name: string;      // Human-friendly name or AGENT_VAULT_MACHINE_NAME alias
+  hostname: string;  // OS hostname
+  platform: string;  // OS platform
+}
+
 interface NormalizedSession {
   schema_version: "1.0";
-  id: string; // Unique ID: e.g. <agent>_<hostname>_<native_id>
+  id: string; // Unique ID: e.g. <agent>_<machine.id>_<native_id>
   agent: "pi" | "opencode" | "agy";
-  machine: {
-    hostname: string;
-    platform: string;
-  };
+  machine: MachineInfo;
   session: {
     native_id: string;
     title: string;

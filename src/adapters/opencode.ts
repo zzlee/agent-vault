@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import type { AgentAdapter } from './base.js';
 import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
+import { getMachineInfo } from '../core/machine.js';
 
 export class OpenCodeAdapter implements AgentAdapter {
   readonly name = 'opencode' as const;
@@ -22,8 +23,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
-    const hostname = os.hostname();
-    const platform = os.platform();
+    const machine = getMachineInfo();
 
     let db: Database.Database | null = null;
     try {
@@ -115,12 +115,9 @@ export class OpenCodeAdapter implements AgentAdapter {
           if (messages.length > 0) {
             results.push({
               schema_version: '1.0',
-              id: `opencode_${hostname}_${s.id}`,
+              id: `opencode_${machine.id}_${s.id}`,
               agent: 'opencode',
-              machine: {
-                hostname,
-                platform,
-              },
+              machine,
               session: {
                 native_id: s.id,
                 title: s.title || `Session ${s.id.slice(0, 8)}`,

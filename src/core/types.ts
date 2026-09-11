@@ -11,14 +11,18 @@ export interface NormalizedMessage {
   has_tool_calls?: boolean;
 }
 
+export interface MachineInfo {
+  id: string;        // e.g. "zzlee-ThinkPad-L560-6af6"
+  name: string;      // e.g. "zzlee-ThinkPad-L560" or custom alias
+  hostname: string;  // os.hostname()
+  platform: string;  // os.platform()
+}
+
 export interface NormalizedSession {
   schema_version: string;
-  id: string; // e.g. agy_ubuntu-devbox_uuid
+  id: string; // e.g. <agent>_<machine.id>_<native_id>
   agent: AgentType;
-  machine: {
-    hostname: string;
-    platform: string;
-  };
+  machine: MachineInfo;
   session: {
     native_id: string;
     title: string;
@@ -32,7 +36,8 @@ export interface NormalizedSession {
 export interface SearchResult {
   sessionId: string;
   agent: AgentType;
-  hostname: string;
+  machineId: string;
+  machineName: string;
   title: string;
   workspace?: string;
   role: MessageRole;
@@ -43,7 +48,8 @@ export interface SearchResult {
 export interface SessionSummary {
   id: string;
   agent: AgentType;
-  hostname: string;
+  machineId: string;
+  machineName: string;
   nativeId: string;
   title: string;
   workspace?: string;

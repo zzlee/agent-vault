@@ -32,6 +32,7 @@ export function createCli(): Command {
     .command('list')
     .description('List stored conversation sessions')
     .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy)')
+    .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Number of sessions to show', '25')
     .action((options) => {
@@ -42,6 +43,7 @@ export function createCli(): Command {
     .command('search <query>')
     .description('Full-text search messages across all sessions and agents using SQLite FTS5')
     .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy)')
+    .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Maximum number of matches', '20')
     .action((query, options) => {

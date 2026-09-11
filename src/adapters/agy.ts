@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import type { AgentAdapter } from './base.js';
 import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
+import { getMachineInfo } from '../core/machine.js';
 
 export class AgyAdapter implements AgentAdapter {
   readonly name = 'agy' as const;
@@ -25,8 +26,7 @@ export class AgyAdapter implements AgentAdapter {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
-    const hostname = os.hostname();
-    const platform = os.platform();
+    const machine = getMachineInfo();
 
     let db: Database.Database | null = null;
     try {
@@ -85,12 +85,9 @@ export class AgyAdapter implements AgentAdapter {
         if (messages.length > 0) {
           results.push({
             schema_version: '1.0',
-            id: `agy_${hostname}_${row.conversation_id}`,
+            id: `agy_${machine.id}_${row.conversation_id}`,
             agent: 'agy',
-            machine: {
-              hostname,
-              platform,
-            },
+            machine,
             session: {
               native_id: row.conversation_id,
               title: row.title || row.preview?.slice(0, 60) || `Session ${row.conversation_id.slice(0, 8)}`,

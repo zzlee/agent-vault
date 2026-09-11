@@ -5,6 +5,8 @@ import readline from 'node:readline';
 import type { AgentAdapter } from './base.js';
 import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
+import { getMachineInfo } from '../core/machine.js';
+import type { MachineInfo } from '../core/types.js';
 
 export class PiAdapter implements AgentAdapter {
   readonly name = 'pi' as const;
@@ -22,8 +24,7 @@ export class PiAdapter implements AgentAdapter {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
-    const hostname = os.hostname();
-    const platform = os.platform();
+    const machine = getMachineInfo();
 
     try {
       const workspaceDirs = fs.readdirSync(this.sessionsDir, { withFileTypes: true })
@@ -36,7 +37,7 @@ export class PiAdapter implements AgentAdapter {
         for (const file of files) {
           const filePath = path.join(dirPath, file);
           try {
-            const session = await this.parseSessionFile(filePath, hostname, platform);
+            const session = await this.parseSessionFile(filePath, machine);
             if (session && session.messages.length > 0) {
               results.push(session);
             }
@@ -54,8 +55,7 @@ export class PiAdapter implements AgentAdapter {
 
   private async parseSessionFile(
     filePath: string,
-    hostname: string,
-    platform: string
+    machine: MachineInfo
   ): Promise<NormalizedSession | null> {
     const fileStream = fs.createReadStream(filePath);
     const rl = readline.createInterface({
@@ -143,12 +143,9 @@ export class PiAdapter implements AgentAdapter {
 
     return {
       schema_version: '1.0',
-      id: `pi_${hostname}_${nativeId}`,
+      id: `pi_${machine.id}_${nativeId}`,
       agent: 'pi',
-      machine: {
-        hostname,
-        platform,
-      },
+      machine,
       session: {
         native_id: nativeId,
         title,

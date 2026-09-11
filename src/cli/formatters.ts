@@ -32,7 +32,7 @@ export function formatSessionList(sessions: SessionSummary[]): string {
 
     table.push([
       agentBadge,
-      pc.gray(s.hostname || 'local'),
+      pc.gray(s.machineName || 'local'),
       title,
       s.messageCount.toString(),
       pc.dim(ws),
@@ -62,7 +62,7 @@ export function formatSearchResults(results: SearchResult[]): string {
     const dateStr = r.updatedAt ? r.updatedAt.replace('T', ' ').slice(0, 16) : '';
 
     lines.push(
-      `${agentBadge} ${pc.bold(r.title)} ${pc.gray(`(${r.hostname} • ${dateStr})`)}`
+      `${agentBadge} ${pc.bold(r.title)} ${pc.gray(`(${r.machineName || r.machineId} • ${dateStr})`)}`
     );
     lines.push(`  ${pc.gray('Session ID:')} ${r.sessionId}`);
     if (r.workspace) {
@@ -83,7 +83,8 @@ export function formatSessionDetail(
   lines.push(pc.bold(pc.cyan('========================================================')));
   lines.push(pc.bold(`Session: ${session.title}`));
   lines.push(`${pc.gray('ID:')}        ${session.id}`);
-  lines.push(`${pc.gray('Agent:')}     ${session.agent} (${session.hostname})`);
+  lines.push(`${pc.gray('Agent:')}     ${session.agent}`);
+  lines.push(`${pc.gray('Machine:')}   ${session.machineName} (${session.machineId})`);
   if (session.workspace) {
     lines.push(`${pc.gray('Workspace:')} ${session.workspace}`);
   }

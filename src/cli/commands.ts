@@ -34,12 +34,13 @@ export async function handleSync(options: { agent?: AgentType }): Promise<void> 
   db.close();
 }
 
-export function handleList(options: { agent?: string; workspace?: string; limit?: string }): void {
+export function handleList(options: { agent?: string; machine?: string; workspace?: string; limit?: string }): void {
   const db = new VaultDB();
   const limit = options.limit ? parseInt(options.limit, 10) : 25;
 
   const sessions = db.listSessions({
     agent: options.agent,
+    machine: options.machine,
     workspace: options.workspace,
     limit,
   });
@@ -50,13 +51,14 @@ export function handleList(options: { agent?: string; workspace?: string; limit?
 
 export function handleSearch(
   query: string,
-  options: { agent?: string; workspace?: string; limit?: string }
+  options: { agent?: string; machine?: string; workspace?: string; limit?: string }
 ): void {
   const db = new VaultDB();
   const limit = options.limit ? parseInt(options.limit, 10) : 20;
 
   const results = db.search(query, {
     agent: options.agent,
+    machine: options.machine,
     workspace: options.workspace,
     limit,
   });
@@ -88,7 +90,7 @@ export function handleShow(
     let out = `# ${sessionData.session.title}\n\n`;
     out += `- **ID:** \`${sessionData.session.id}\`\n`;
     out += `- **Agent:** \`${sessionData.session.agent}\`\n`;
-    out += `- **Host:** \`${sessionData.session.hostname}\`\n`;
+    out += `- **Machine:** \`${sessionData.session.machineName} (${sessionData.session.machineId})\`\n`;
     out += `- **Workspace:** \`${sessionData.session.workspace || 'N/A'}\`\n`;
     out += `- **Created:** ${sessionData.session.createdAt}\n`;
     out += `- **Updated:** ${sessionData.session.updatedAt}\n\n---\n\n`;
@@ -139,6 +141,12 @@ export function handleStats(): void {
   for (const [agent, count] of Object.entries(stats.agents)) {
     console.log(`    - ${agent}: ${count}`);
   }
+  if (Object.keys(stats.machines).length > 0) {
+    console.log(`  ${pc.bold('Sessions by Machine:')}`);
+    for (const [m, count] of Object.entries(stats.machines)) {
+      console.log(`    - ${m}: ${count}`);
+    }
+  }
 
   db.close();
 }
@@ -148,7 +156,8 @@ export async function handlePush(): Promise<void> {
   await handleSync({});
 
   console.log(pc.cyan('🚀 Committing and pushing to Git remote repository...'));
-  const hostname = os.hostname();
+  const { getMachineInfo } = await import('../core/machine.js');
+  const machine = getMachineInfo();
   const dateStr = new Date().toISOString().slice(0, 10);
 
   try {
@@ -159,7 +168,7 @@ export async function handlePush(): Promise<void> {
       return;
     }
 
-    execSync(`git commit -m "sync(vault): ${hostname} conversations at ${dateStr}"`, { stdio: 'inherit' });
+    execSync(`git commit -m "sync(vault): ${machine.name} (${machine.id}) conversations at ${dateStr}"`, { stdio: 'inherit' });
     execSync('git push', { stdio: 'inherit' });
     console.log(pc.green('✓ Successfully pushed conversations to remote repository!'));
   } catch (err: any) {
