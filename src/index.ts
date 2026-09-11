@@ -51,6 +51,9 @@ export function createCli(): Command {
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Maximum number of matches', '20')
+    .option('--html <path>', 'Export search results as an interactive HTML file')
+    .option('--since <date>', 'Filter messages updated since date (YYYY-MM-DD)')
+    .option('--until <date>', 'Filter messages updated until date (YYYY-MM-DD)')
     .action((query, options) => {
       handleSearch(query, options);
     });
