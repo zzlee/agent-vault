@@ -27,7 +27,9 @@ export async function handleSync(options: { agent?: AgentType }): Promise<void> 
       `✓ Synced ${result.addedOrUpdated} sessions in ${duration}s ` +
         `(${pc.green(`pi: ${result.agentCounts.pi}`)}, ` +
         `${pc.magenta(`opencode: ${result.agentCounts.opencode}`)}, ` +
-        `${pc.blue(`agy: ${result.agentCounts.agy}`)})`
+        `${pc.blue(`agy: ${result.agentCounts.agy}`)}, ` +
+        `${pc.yellow(`freebuff: ${result.agentCounts.freebuff}`)}, ` +
+        `${pc.cyan(`hermes: ${result.agentCounts.hermes}`)})`
     )
   );
 

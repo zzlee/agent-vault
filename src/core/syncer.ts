@@ -4,6 +4,8 @@ import type { AgentAdapter } from '../adapters/base.js';
 import { PiAdapter } from '../adapters/pi.js';
 import { OpenCodeAdapter } from '../adapters/opencode.js';
 import { AgyAdapter } from '../adapters/agy.js';
+import { FreebuffAdapter } from '../adapters/freebuff.js';
+import { HermesAdapter } from '../adapters/hermes.js';
 import type { AgentType, NormalizedSession } from './types.js';
 import type { VaultDB } from './db.js';
 import { getDataDir } from './paths.js';
@@ -20,6 +22,8 @@ export class Syncer {
       new PiAdapter(),
       new OpenCodeAdapter(),
       new AgyAdapter(),
+      new FreebuffAdapter(),
+      new HermesAdapter(),
     ];
   }
 
@@ -36,6 +40,8 @@ export class Syncer {
       pi: 0,
       opencode: 0,
       agy: 0,
+      freebuff: 0,
+      hermes: 0,
     };
 
     for (const adapter of targetAdapters) {

@@ -22,8 +22,8 @@ export function createCli(): Command {
 
   program
     .command('sync')
-    .description('Sync conversation histories from local AI agents (pi, opencode, agy) into vault')
-    .option('-a, --agent <type>', 'Specific agent to sync (pi, opencode, agy)')
+    .description('Sync conversation histories from local AI agents into vault')
+    .option('-a, --agent <type>', 'Specific agent to sync (pi, opencode, agy, freebuff, hermes)')
     .action(async (options) => {
       await handleSync({ agent: options.agent as AgentType | undefined });
     });
@@ -31,7 +31,7 @@ export function createCli(): Command {
   program
     .command('list')
     .description('List stored conversation sessions')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Number of sessions to show', '25')
@@ -42,7 +42,7 @@ export function createCli(): Command {
   program
     .command('search <query>')
     .description('Full-text search messages across all sessions and agents using SQLite FTS5')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Maximum number of matches', '20')

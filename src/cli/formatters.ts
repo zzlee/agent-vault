@@ -25,6 +25,8 @@ export function formatSessionList(sessions: SessionSummary[]): string {
     if (s.agent === 'pi') agentBadge = pc.green('pi');
     else if (s.agent === 'opencode') agentBadge = pc.magenta('opencode');
     else if (s.agent === 'agy') agentBadge = pc.blue('agy');
+    else if (s.agent === 'freebuff') agentBadge = pc.yellow('freebuff');
+    else if (s.agent === 'hermes') agentBadge = pc.cyan('hermes');
 
     const title = s.title.length > 35 ? s.title.slice(0, 32) + '...' : s.title;
     const ws = s.workspace ? (s.workspace.length > 25 ? '...' + s.workspace.slice(-22) : s.workspace) : '-';
@@ -57,6 +59,8 @@ export function formatSearchResults(results: SearchResult[]): string {
     if (r.agent === 'pi') agentBadge = pc.green(agentBadge);
     else if (r.agent === 'opencode') agentBadge = pc.magenta(agentBadge);
     else if (r.agent === 'agy') agentBadge = pc.blue(agentBadge);
+    else if (r.agent === 'freebuff') agentBadge = pc.yellow(agentBadge);
+    else if (r.agent === 'hermes') agentBadge = pc.cyan(agentBadge);
 
     const roleBadge = r.role === 'user' ? pc.yellow('[USER]') : pc.cyan('[ASSISTANT]');
     const dateStr = r.updatedAt ? r.updatedAt.replace('T', ' ').slice(0, 16) : '';

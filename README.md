@@ -1,6 +1,6 @@
 # agent-vault 🛡️
 
-Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (`pi`, `opencode`, and `agy`).
+Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, and `hermes`).
 
 ## Features
 
@@ -8,6 +8,8 @@ Unified conversation history aggregator, search engine, and cross-machine vault 
   - **pi coding agent** (`~/.pi/agent/sessions/`)
   - **opencode** (`~/.local/share/opencode/opencode.db`)
   - **agy (Antigravity)** (`~/.gemini/antigravity-cli/`)
+  - **freebuff (Codebuff AI / Manicode)** (`~/.config/manicode/projects/`)
+  - **hermes (Nous Research Hermes Agent)** (`~/.hermes/state.db`)
 - 🌐 **Git-Native Multi-Machine Sync**:
   - Structured JSON storage partitioned by machine and session to prevent merge conflicts.
   - Push and pull across multiple machines via Git.
@@ -64,14 +66,14 @@ Add `agent-vault` to your MCP client config (e.g. Antigravity or Claude Desktop)
 ## Architecture
 
 ```
-[pi]          [opencode]          [agy]
-  │               │                 │
-  └───────┬───────┴─────────────────┘
-          ▼
-   [Agent Adapters] (Normalization & Sanitization)
-          │
-          ├──► Git-Tracked Data Layer: data/sessions/<agent>/<machine>_<session>.json
-          └──► Local Query Cache: .cache/vault.db (SQLite FTS5)
+[pi]      [opencode]      [agy]      [freebuff]      [hermes]
+  │           │             │            │               │
+  └───────────┴─────────────┼────────────┴───────────────┘
+                            ▼
+     [Agent Adapters] (Normalization & Sanitization)
+                            │
+                            ├──► Git-Tracked Data Layer: data/sessions/<agent>/<session_id>.json
+                            └──► Local Query Cache: .cache/vault.db (SQLite FTS5)
 ```
 
 ## License

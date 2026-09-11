@@ -92,5 +92,61 @@ export function handleDoctor(): void {
     console.log(`   ${pc.gray('○')} Not detected at ${pc.dim(agyDb)}`);
   }
   console.log('');
+
+  // 4. Freebuff (Manicode) Check
+  const freebuffBase = process.env.MANICODE_DIR || process.env.FREEBUFF_DIR || path.join(home, '.config', 'manicode');
+  const freebuffProjects = path.join(freebuffBase, 'projects');
+  console.log(pc.bold('4. Freebuff (Codebuff AI / Manicode):'));
+  if (fs.existsSync(freebuffProjects)) {
+    console.log(`   ${pc.green('✓')} Projects directory found: ${pc.dim(freebuffProjects)}`);
+    try {
+      let chatCount = 0;
+      const projects = fs.readdirSync(freebuffProjects, { withFileTypes: true }).filter((d) => d.isDirectory());
+      for (const p of projects) {
+        const chatsDir = path.join(freebuffProjects, p.name, 'chats');
+        if (fs.existsSync(chatsDir)) {
+          const chats = fs.readdirSync(chatsDir, { withFileTypes: true }).filter((d) => d.isDirectory());
+          for (const c of chats) {
+            if (fs.existsSync(path.join(chatsDir, c.name, 'chat-messages.json'))) {
+              chatCount++;
+            }
+          }
+        }
+      }
+      console.log(`   ${pc.green('✓')} Format: JSON (chat-messages.json + chat-meta.json)`);
+      console.log(`   ${pc.green('✓')} Found ${chatCount} session(s) across ${projects.length} project(s).`);
+    } catch (e: any) {
+      console.log(`   ${pc.yellow('⚠')} Error inspecting freebuff projects: ${e.message}`);
+    }
+  } else {
+    console.log(`   ${pc.gray('○')} Not detected at ${pc.dim(freebuffProjects)}`);
+  }
+  console.log('');
+
+  // 5. Hermes Agent Check
+  const hermesDir = process.env.HERMES_HOME || path.join(home, '.hermes');
+  const hermesDb = path.join(hermesDir, 'state.db');
+  console.log(pc.bold('5. Hermes Agent (Nous Research):'));
+  if (fs.existsSync(hermesDb)) {
+    console.log(`   ${pc.green('✓')} Database found: ${pc.dim(hermesDb)}`);
+    try {
+      const db = new Database(hermesDb, { readonly: true });
+      const countRow = db.prepare(`SELECT COUNT(*) as count FROM sessions`).get() as { count: number };
+      console.log(`   ${pc.green('✓')} Found ${countRow.count} sessions in state.db.`);
+      db.close();
+    } catch (e: any) {
+      console.log(`   ${pc.yellow('⚠')} Error inspecting hermes state.db: ${e.message}`);
+    }
+  } else if (fs.existsSync(hermesDir)) {
+    console.log(`   ${pc.green('✓')} Hermes directory found: ${pc.dim(hermesDir)}`);
+    const profilesDir = path.join(hermesDir, 'profiles');
+    if (fs.existsSync(profilesDir)) {
+      console.log(`   ${pc.green('✓')} Profile directory detected at ${pc.dim(profilesDir)}`);
+    }
+  } else {
+    console.log(`   ${pc.gray('○')} Not detected at ${pc.dim(hermesDir)}`);
+  }
+  console.log('');
+
   console.log(pc.green('All active agents are compatible with current agent-vault adapters.'));
 }

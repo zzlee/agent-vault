@@ -6,13 +6,13 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 
 ## 1. Project Overview & System Philosophy
 
-`agent-vault` aggregates, normalizes, indexes, and synchronizes conversation histories across multiple AI coding agents (`pi`, `opencode`, and `agy`) on multiple machines.
+`agent-vault` aggregates, normalizes, indexes, and synchronizes conversation histories across multiple AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, and `hermes`) on multiple machines.
 
 ### Dual-Layer Storage Design
 
 1. **Git-Tracked Canonical Data Layer (`data/sessions/`)**:
    - **Source of truth** across machines.
-   - Formatted as standardized JSON files: `data/sessions/<agent>/<hostname>_<session_id>.json`.
+   - Formatted as standardized JSON files: `data/sessions/<agent>/<session_id>.json`.
    - Partitioned by agent and machine identifier to prevent Git merge conflicts.
 2. **Local High-Performance Query Layer (`.cache/vault.db`)**:
    - Embedded SQLite database with **FTS5** (Full-Text Search).
@@ -28,6 +28,8 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 | **pi coding agent** | `~/.pi/agent/sessions/--<workspace>--/*.jsonl` | JSON Lines (`v3`) | Streams lines using Node `readline`. Parses first `session` turn for metadata and subsequent `message` turns for user/assistant roles and tool calls. |
 | **opencode** | `~/.local/share/opencode/opencode.db` | SQLite (Drizzle ORM) | Read-only connection querying `session`, `message`, and `part` tables. Combines message parts and associates directory workspaces. |
 | **agy (Antigravity)** | `~/.gemini/antigravity-cli/` | SQLite + JSONL | Queries `conversation_summaries.db` for session index, then parses `brain/<id>/.system_generated/logs/transcript.jsonl` for turn-by-turn history. |
+| **freebuff** | `~/.config/manicode/projects/<project>/chats/` | JSON | Reads `chat-messages.json` (user/assistant blocks & tool calls), `chat-meta.json` (title & counts), and `run-state.json` (workspace). |
+| **hermes** | `~/.hermes/state.db` | SQLite / JSONL | Reads `sessions` and `messages` tables via dynamic PRAGMA inspection; supports profile paths (`profiles/*/state.db`) and fallback JSONL transcripts. |
 
 ---
 
@@ -45,7 +47,7 @@ interface MachineInfo {
 interface NormalizedSession {
   schema_version: "1.0";
   id: string; // Unique ID: e.g. <agent>_<machine.id>_<native_id>
-  agent: "pi" | "opencode" | "agy";
+  agent: "pi" | "opencode" | "agy" | "freebuff" | "hermes";
   machine: MachineInfo;
   session: {
     native_id: string;
