@@ -1,7 +1,9 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import pc from 'picocolors';
 import { VaultDB } from '../core/db.js';
@@ -125,9 +127,9 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 5: vault_sync
   server.tool(
     'vault_sync',
-    'Trigger a local synchronization of conversation histories from pi, opencode, and agy',
+    'Trigger a local synchronization of conversation histories from local agents (pi, opencode, agy, freebuff, hermes)',
     {
-      agent: z.enum(['pi', 'opencode', 'agy']).optional().describe('Optional specific agent to sync'),
+      agent: AgentEnum.optional().describe('Optional specific agent to sync'),
     },
     async ({ agent }) => {
       const syncer = new Syncer(db);
@@ -149,15 +151,19 @@ export function createMcpServer(options: McpServerOptions = {}) {
 export async function startMcpHttpServer(options: McpServerOptions = {}): Promise<http.Server> {
   const port = options.port || 3000;
   const host = options.host || '127.0.0.1';
-  const { server } = createMcpServer(options);
 
-  const transports = new Map<string, SSEServerTransport>();
+  // Multi-session tracking for Streamable HTTP
+  const streamableSessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer; db: VaultDB }>();
+
+  // Multi-session tracking for Legacy SSE
+  const sseSessions = new Map<string, { transport: SSEServerTransport; server: McpServer; db: VaultDB }>();
 
   const httpServer = http.createServer(async (req, res) => {
-    // CORS headers
+    // CORS headers supporting modern MCP Streamable HTTP and SSE
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, mcp-protocol-version, Accept');
+    res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id, mcp-protocol-version');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -176,10 +182,12 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
           {
             status: 'ok',
             name: 'agent-vault-mcp',
-            version: '1.0.0',
+            version: '1.2.0',
             endpoints: {
+              streamableHttp: `http://${host}:${port}/mcp`,
               sse: `http://${host}:${port}/sse`,
               messages: `http://${host}:${port}/messages`,
+              health: `http://${host}:${port}/health`,
             },
           },
           null,
@@ -189,30 +197,72 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
       return;
     }
 
-    // SSE Stream endpoint (Streamable HTTP)
+    // Modern Streamable HTTP Endpoint (/mcp)
+    if (pathname === '/mcp') {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      let session = sessionId ? streamableSessions.get(sessionId) : undefined;
+
+      if (!session) {
+        if (sessionId) {
+          // Unknown or expired session ID
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Session not found' }));
+          return;
+        }
+
+        // Initialize a new Streamable HTTP connection
+        const { server, db } = createMcpServer(options);
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => crypto.randomUUID(),
+        });
+
+        await server.connect(transport);
+
+        transport.onclose = () => {
+          if (transport.sessionId) {
+            streamableSessions.delete(transport.sessionId);
+          }
+          db.close();
+        };
+
+        await transport.handleRequest(req, res);
+
+        if (transport.sessionId) {
+          streamableSessions.set(transport.sessionId, { transport, server, db });
+        }
+        return;
+      }
+
+      await session.transport.handleRequest(req, res);
+      return;
+    }
+
+    // Legacy SSE Stream endpoint (/sse)
     if (pathname === '/sse' && req.method === 'GET') {
+      const { server, db } = createMcpServer(options);
       const transport = new SSEServerTransport('/messages', res);
-      transports.set(transport.sessionId, transport);
+      sseSessions.set(transport.sessionId, { transport, server, db });
 
       req.on('close', () => {
-        transports.delete(transport.sessionId);
+        sseSessions.delete(transport.sessionId);
+        db.close();
       });
 
       await server.connect(transport);
       return;
     }
 
-    // Message POST endpoint for SSE sessions
+    // Legacy Message POST endpoint for SSE sessions (/messages)
     if (pathname === '/messages' && req.method === 'POST') {
       const sessionId = parsedUrl.searchParams.get('sessionId');
-      if (!sessionId || !transports.has(sessionId)) {
+      const session = sessionId ? sseSessions.get(sessionId) : undefined;
+      if (!session) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid or missing sessionId' }));
         return;
       }
 
-      const transport = transports.get(sessionId)!;
-      await transport.handlePostMessage(req, res);
+      await session.transport.handlePostMessage(req, res);
       return;
     }
 
@@ -222,11 +272,12 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      console.log(pc.bold(pc.cyan('🛡️  Agent Vault MCP Server (Streamable HTTP / SSE) Started!')));
-      console.log(`   ${pc.green('•')} Listening on: ${pc.bold(`http://${host}:${port}`)}`);
-      console.log(`   ${pc.green('•')} SSE Endpoint: ${pc.bold(`http://${host}:${port}/sse`)}`);
-      console.log(`   ${pc.green('•')} Messages:     ${pc.bold(`http://${host}:${port}/messages`)}`);
-      console.log(`   ${pc.green('•')} Health:       ${pc.bold(`http://${host}:${port}/health`)}`);
+      console.log(pc.bold(pc.cyan('🛡️  Agent Vault MCP Server Started!')));
+      console.log(`   ${pc.green('•')} Listening on:     ${pc.bold(`http://${host}:${port}`)}`);
+      console.log(`   ${pc.green('•')} Streamable HTTP: ${pc.bold(`http://${host}:${port}/mcp`)}`);
+      console.log(`   ${pc.green('•')} SSE Endpoint:   ${pc.bold(`http://${host}:${port}/sse`)}`);
+      console.log(`   ${pc.green('•')} Messages:       ${pc.bold(`http://${host}:${port}/messages`)}`);
+      console.log(`   ${pc.green('•')} Health:         ${pc.bold(`http://${host}:${port}/health`)}`);
       console.log(pc.gray('\nPress Ctrl+C to stop.'));
       resolve(httpServer);
     });
