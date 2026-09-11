@@ -111,21 +111,42 @@ To support a new AI agent (e.g. Claude Code, Cursor, Aider, Codex):
 ## 6. Fresh Clone & Multi-Machine Commands
 
 ```bash
-# Setup on a newly cloned machine
+# Setup on a newly cloned machine (builds TS, creates .cache/, links CLI, indexes)
 ./scripts/init.sh
 
-# Verify agent compatibility and environment status
-node bin/agent-vault.js doctor
+# Verify environment, path detection, and agent status
+agent-vault doctor
 
-# Ingest local sessions into vault
-node bin/agent-vault.js sync
+# Ingest local sessions into vault (all agents or specific agent)
+agent-vault sync
+agent-vault sync -a freebuff
 
-# Full-text search messages
-node bin/agent-vault.js search "<query>"
+# List sessions with optional filters
+agent-vault list
+agent-vault list -a agy -l 50
+agent-vault list -w /path/to/workspace
 
-# Commit and push synced data to remote
-node bin/agent-vault.js push
+# Full-text search messages using SQLite FTS5
+agent-vault search "<query>"
+agent-vault search "error" -a opencode -m thinkpad
+
+# Inspect or export session transcripts
+agent-vault show <session-id>
+agent-vault show <session-id> --json
+agent-vault show <session-id> -e session.md
+
+# View vault metrics
+agent-vault stats
+
+# Start Model Context Protocol (MCP) Streamable HTTP Server
+agent-vault serve --port 3000
+
+# Commit and push synced data to remote Git repository
+agent-vault push
 
 # Pull new sessions from other machines and rebuild local index
-node bin/agent-vault.js pull
+agent-vault pull
+
+# Rebuild local SQLite FTS5 index from data/sessions/
+agent-vault reindex
 ```
