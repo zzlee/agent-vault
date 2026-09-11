@@ -92,5 +92,18 @@ export function createCli(): Command {
       handleDoctor();
     });
 
+  program
+    .command('serve')
+    .description('Start Model Context Protocol (MCP) Server with Streamable HTTP (SSE)')
+    .option('-p, --port <port>', 'Port to listen on', '3000')
+    .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
+    .action(async (options) => {
+      const { startMcpHttpServer } = await import('./mcp/server.js');
+      await startMcpHttpServer({
+        port: parseInt(options.port, 10),
+        host: options.host,
+      });
+    });
+
   return program;
 }
