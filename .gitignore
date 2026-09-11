@@ -29,3 +29,7 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Synced conversation history files (stored in standalone vault repository zzlee/agent-vault-data)
+data/sessions/*/*.json
+!data/sessions/*/.gitkeep

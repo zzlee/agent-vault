@@ -12,6 +12,7 @@
     "watch": "tsc -w",
     "start": "node bin/agent-vault.js",
     "setup": "./scripts/init.sh",
+    "create-vault": "./scripts/create-vault-repo.sh",
     "reindex": "node bin/agent-vault.js reindex",
     "clean": "rm -rf dist .cache"
   },

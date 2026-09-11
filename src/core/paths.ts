@@ -13,17 +13,30 @@ export function getVaultRoot(): string {
     return path.resolve(process.env.AGENT_VAULT_DIR);
   }
 
-  const cwd = process.cwd();
-  const cwdPkg = path.join(cwd, 'package.json');
-  if (fs.existsSync(cwdPkg)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(cwdPkg, 'utf-8'));
-      if (pkg.name === 'agent-vault') {
-        return cwd;
-      }
-    } catch {
-      // ignore
+  // Check current working directory and walk up to find a vault root:
+  // 1. Has .agentvault marker
+  // 2. Has data/sessions directory
+  // 3. Has package.json with name === 'agent-vault' or 'agent-vault-data'
+  let dir = process.cwd();
+  while (dir && dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.agentvault'))) {
+      return dir;
     }
+    if (fs.existsSync(path.join(dir, 'data', 'sessions'))) {
+      return dir;
+    }
+    const pkgFile = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgFile)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf-8'));
+        if (pkg.name === 'agent-vault' || pkg.name === 'agent-vault-data') {
+          return dir;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    dir = path.dirname(dir);
   }
 
   // Fallback to the package's own root directory
