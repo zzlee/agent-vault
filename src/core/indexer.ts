@@ -1,8 +1,8 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import fg from 'fast-glob';
 import type { VaultDB } from './db.js';
 import type { NormalizedSession } from './types.js';
+import { getDataDir } from './paths.js';
 
 export class Indexer {
   private db: VaultDB;
@@ -10,7 +10,7 @@ export class Indexer {
 
   constructor(db: VaultDB, dataDir?: string) {
     this.db = db;
-    this.dataDir = dataDir || path.join(process.cwd(), 'data', 'sessions');
+    this.dataDir = dataDir || getDataDir();
   }
 
   async reindexAll(): Promise<{ indexedCount: number; errors: number }> {

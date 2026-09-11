@@ -6,6 +6,7 @@ import { OpenCodeAdapter } from '../adapters/opencode.js';
 import { AgyAdapter } from '../adapters/agy.js';
 import type { AgentType, NormalizedSession } from './types.js';
 import type { VaultDB } from './db.js';
+import { getDataDir } from './paths.js';
 
 export class Syncer {
   private adapters: AgentAdapter[];
@@ -14,7 +15,7 @@ export class Syncer {
 
   constructor(db: VaultDB, dataDir?: string) {
     this.db = db;
-    this.dataDir = dataDir || path.join(process.cwd(), 'data', 'sessions');
+    this.dataDir = dataDir || getDataDir();
     this.adapters = [
       new PiAdapter(),
       new OpenCodeAdapter(),

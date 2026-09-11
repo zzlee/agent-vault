@@ -1,13 +1,15 @@
-import Database, { type Database as DatabaseType } from 'better-sqlite3';
+import { type Database as DatabaseType } from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { NormalizedSession, SearchResult, SessionSummary } from './types.js';
+import { getDbPath } from './paths.js';
 
 export class VaultDB {
   private db: DatabaseType;
 
   constructor(dbPath?: string) {
-    const finalPath = dbPath || path.join(process.cwd(), '.cache', 'vault.db');
+    const finalPath = dbPath || getDbPath();
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
 
     this.db = new Database(finalPath);
