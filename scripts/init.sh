@@ -41,6 +41,8 @@ mkdir -p .cache
 mkdir -p data/sessions/pi
 mkdir -p data/sessions/opencode
 mkdir -p data/sessions/agy
+mkdir -p data/sessions/freebuff
+mkdir -p data/sessions/hermes
 
 # 5. Run initial re-index if there are existing sessions
 echo "⚡ Setting up local SQLite FTS5 database index..."
