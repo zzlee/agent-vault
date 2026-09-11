@@ -46,11 +46,11 @@ mkdir -p data/sessions/agy
 echo "⚡ Setting up local SQLite FTS5 database index..."
 node bin/agent-vault.js reindex
 
-# 6. Check npm link
-echo ""
-echo "💡 Tip: To run 'agent-vault' globally from anywhere in your shell,"
-echo "   you can execute: npm link"
-echo ""
+# 6. Globally link CLI command
+echo "🔗 Linking 'agent-vault' command globally via npm link..."
+npm link || {
+  echo "⚠️ Note: 'npm link' requires global write permission. You can also run: node bin/agent-vault.js"
+}
 echo "✅ Initialization complete! You can now run:"
 echo "   agent-vault sync      # Ingest local chat histories"
 echo "   agent-vault list      # List all stored sessions"
