@@ -13,6 +13,7 @@ import {
   formatSessionDetail,
   formatSyncDryRun,
 } from './formatters.js';
+import { formatSearchHtml } from './html-export.js';
 
 export async function handleSync(options: { agent?: AgentType; dryRun?: boolean }): Promise<void> {
   const db = new VaultDB();
@@ -66,7 +67,7 @@ export function handleList(options: { agent?: string; machine?: string; workspac
 
 export function handleSearch(
   query: string,
-  options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: string }
+  options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: string; since?: string; until?: string; html?: string }
 ): void {
   const db = new VaultDB();
   const limit = options.limit ? parseInt(options.limit, 10) : 20;
@@ -77,9 +78,17 @@ export function handleSearch(
     workspace: options.workspace,
     role: options.role,
     limit,
+    since: options.since,
+    until: options.until,
   });
 
-  console.log(formatSearchResults(results));
+  if (options.html) {
+    const htmlContent = formatSearchHtml(results, query);
+    fs.writeFileSync(options.html, htmlContent, 'utf-8');
+    console.log(pc.green(`✓ Exported ${results.length} search results to ${options.html}`));
+  } else {
+    console.log(formatSearchResults(results));
+  }
   db.close();
 }
 

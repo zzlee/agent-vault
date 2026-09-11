@@ -160,7 +160,7 @@ export class VaultDB {
 
   public search(
     query: string,
-    options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: number } = {}
+    options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: number; since?: string; until?: string } = {}
   ): SearchResult[] {
     const limit = options.limit || 20;
 
@@ -208,6 +208,14 @@ export class VaultDB {
     if (options.role) {
       sql += ` AND LOWER(f.role) = ?`;
       params.push(options.role.toLowerCase());
+    }
+    if (options.since) {
+      sql += ` AND s.updated_at >= ?`;
+      params.push(options.since);
+    }
+    if (options.until) {
+      sql += ` AND s.updated_at <= ?`;
+      params.push(options.until);
     }
 
     sql += ` ORDER BY rank LIMIT ?`;
