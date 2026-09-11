@@ -3,10 +3,10 @@ import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
 import Database from 'better-sqlite3';
-import type { AgentAdapter } from './base.js';
-import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
-import { sanitizeText } from '../core/sanitizer.js';
+import type { AgentAdapter, CollectOptions } from './base.js';
+import type { NormalizedSession, NormalizedMessage } from '../core/types.js';
 import { getMachineInfo } from '../core/machine.js';
+import { sanitizeText } from '../core/sanitizer.js';
 
 export class AgyAdapter implements AgentAdapter {
   readonly name = 'agy' as const;
@@ -22,7 +22,7 @@ export class AgyAdapter implements AgentAdapter {
     return fs.existsSync(this.dbPath);
   }
 
-  async collect(): Promise<NormalizedSession[]> {
+  async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
@@ -46,6 +46,42 @@ export class AgyAdapter implements AgentAdapter {
       }>;
 
       for (const row of rows) {
+        const expectedId = `agy_${machine.id}_${row.conversation_id}`;
+        const existing = options?.existingSessions?.get(expectedId);
+
+        // Parse workspace from workspace_uris
+        let workspace = '';
+        try {
+          const uris = JSON.parse(row.workspace_uris);
+          if (Array.isArray(uris) && uris.length > 0) {
+            workspace = uris[0];
+          }
+        } catch {
+          workspace = row.workspace_uris || '';
+        }
+
+        const updatedAt = row.last_modified_time;
+        const createdAt = row.last_user_input_time || row.last_modified_time;
+
+        // Fast path: If session is unchanged and already indexed, skip reading/parsing transcript.jsonl
+        if (existing && existing.updatedAt === updatedAt) {
+          results.push({
+            schema_version: '1.0',
+            id: expectedId,
+            agent: 'agy',
+            machine,
+            session: {
+              native_id: row.conversation_id,
+              title: row.title || row.preview || '(untitled)',
+              workspace,
+              created_at: createdAt,
+              updated_at: updatedAt,
+            },
+            messages: new Array(existing.messageCount),
+          });
+          continue;
+        }
+
         const transcriptPath = path.join(
           this.baseDir,
           'brain',
@@ -58,17 +94,6 @@ export class AgyAdapter implements AgentAdapter {
         let messages: NormalizedMessage[] = [];
         if (fs.existsSync(transcriptPath)) {
           messages = await this.parseTranscript(transcriptPath);
-        }
-
-        // Parse workspace from workspace_uris
-        let workspace = '';
-        try {
-          const uris = JSON.parse(row.workspace_uris);
-          if (Array.isArray(uris) && uris.length > 0) {
-            workspace = uris[0];
-          }
-        } catch {
-          workspace = row.workspace_uris || '';
         }
 
         // If no transcript found or empty, fallback to summary preview if available

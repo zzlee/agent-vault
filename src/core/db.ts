@@ -246,6 +246,30 @@ export class VaultDB {
     return this.db.prepare(sql).all(...params) as SessionSummary[];
   }
 
+  public getSessionMeta(id: string): { id: string; updatedAt: string; messageCount: number } | null {
+    const row = this.db.prepare(`
+      SELECT id, updated_at AS updatedAt, message_count AS messageCount
+      FROM sessions
+      WHERE id = ?
+    `).get(id) as { id: string; updatedAt: string; messageCount: number } | undefined;
+    return row || null;
+  }
+
+  public getSessionMetaMap(agent?: string): Map<string, { id: string; updatedAt: string; messageCount: number }> {
+    let sql = `SELECT id, updated_at AS updatedAt, message_count AS messageCount FROM sessions`;
+    const params: unknown[] = [];
+    if (agent) {
+      sql += ` WHERE agent = ?`;
+      params.push(agent);
+    }
+    const rows = this.db.prepare(sql).all(...params) as Array<{ id: string; updatedAt: string; messageCount: number }>;
+    const map = new Map<string, { id: string; updatedAt: string; messageCount: number }>();
+    for (const r of rows) {
+      map.set(r.id, r);
+    }
+    return map;
+  }
+
   public getSession(
     id: string,
     options: { role?: string; noTools?: boolean } = {}

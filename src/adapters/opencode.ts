@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import Database from 'better-sqlite3';
-import type { AgentAdapter } from './base.js';
+import type { AgentAdapter, CollectOptions } from './base.js';
 import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
 import { getMachineInfo } from '../core/machine.js';
@@ -19,7 +19,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     return fs.existsSync(this.dbPath);
   }
 
-  async collect(): Promise<NormalizedSession[]> {
+  async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
@@ -56,6 +56,29 @@ export class OpenCodeAdapter implements AgentAdapter {
       `);
 
       for (const s of sessions) {
+        const expectedId = `opencode_${machine.id}_${s.id}`;
+        const existing = options?.existingSessions?.get(expectedId);
+        const updatedAt = new Date(s.time_updated).toISOString();
+        const createdAt = new Date(s.time_created).toISOString();
+
+        if (existing && existing.updatedAt === updatedAt) {
+          results.push({
+            schema_version: '1.0',
+            id: expectedId,
+            agent: 'opencode',
+            machine,
+            session: {
+              native_id: s.id,
+              title: s.title || '(untitled)',
+              workspace: s.directory || '',
+              created_at: createdAt,
+              updated_at: updatedAt,
+            },
+            messages: new Array(existing.messageCount),
+          });
+          continue;
+        }
+
         try {
           const rawMessages = messageStmt.all(s.id) as Array<{ id: string; time_created: number; data: string }>;
           const rawParts = partsStmt.all(s.id) as Array<{ id: string; message_id: string; time_created: number; data: string }>;

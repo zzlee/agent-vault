@@ -82,11 +82,22 @@ export class Syncer {
         continue;
       }
 
-      const sessions: NormalizedSession[] = await adapter.collect();
       const agentDir = path.join(this.dataDir, adapter.name);
       if (!isDryRun) {
         fs.mkdirSync(agentDir, { recursive: true });
       }
+
+      // Pre-fetch in-memory metadata map for this agent (single SQL query)
+      const rawMetaMap = this.db.getSessionMetaMap(adapter.name);
+      const existingMap = new Map<string, { id: string; updatedAt: string; messageCount: number }>();
+      for (const [id, meta] of rawMetaMap) {
+        const filePath = path.join(agentDir, `${id}.json`);
+        if (fs.existsSync(filePath)) {
+          existingMap.set(id, meta);
+        }
+      }
+
+      const sessions: NormalizedSession[] = await adapter.collect({ existingSessions: existingMap });
 
       const details = agentDetails[adapter.name] || {
         newSessions: 0,
@@ -100,7 +111,9 @@ export class Syncer {
       for (const session of sessions) {
         const fileName = `${session.id}.json`;
         const filePath = path.join(agentDir, fileName);
-        const msgCount = session.messages.length;
+        const existing = existingMap.get(session.id);
+        const prevCount = existing ? (existing.messageCount || 0) : 0;
+        const msgCount = session.messages.length || prevCount;
 
         details.totalSessions++;
         details.totalMessages += msgCount;
@@ -111,20 +124,13 @@ export class Syncer {
         let isUpdated = false;
         let deltaMsgs = 0;
 
-        if (!fs.existsSync(filePath)) {
+        if (!existing || !fs.existsSync(filePath)) {
           isNew = true;
           deltaMsgs = msgCount;
         } else {
-          const existing = this.db.getSession(session.id);
-          if (!existing) {
-            isNew = true;
-            deltaMsgs = msgCount;
-          } else {
-            const prevCount = existing.session.messageCount || 0;
-            if (msgCount > prevCount || session.session.updated_at !== existing.session.updatedAt) {
-              isUpdated = true;
-              deltaMsgs = Math.max(0, msgCount - prevCount);
-            }
+          if (session.messages.length > prevCount || session.session.updated_at !== existing.updatedAt) {
+            isUpdated = true;
+            deltaMsgs = Math.max(0, session.messages.length - prevCount);
           }
         }
 
@@ -143,7 +149,7 @@ export class Syncer {
           totalUnchangedSessions++;
         }
 
-        if (!isDryRun) {
+        if (!isDryRun && (isNew || isUpdated)) {
           // Save structured JSON to data layer (git-tracked)
           fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
 

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { AgentAdapter } from './base.js';
+import type { AgentAdapter, CollectOptions } from './base.js';
 import type { NormalizedMessage, NormalizedSession, MessageRole } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
 import { getMachineInfo } from '../core/machine.js';
@@ -34,9 +34,9 @@ export class FreebuffAdapter implements AgentAdapter {
   readonly name = 'freebuff' as const;
   private baseDir: string;
 
-  constructor(customDir?: string) {
+  constructor(customBaseDir?: string) {
     this.baseDir =
-      customDir ||
+      customBaseDir ||
       process.env.MANICODE_DIR ||
       process.env.FREEBUFF_DIR ||
       path.join(os.homedir(), '.config', 'manicode');
@@ -47,7 +47,7 @@ export class FreebuffAdapter implements AgentAdapter {
     return fs.existsSync(projectsDir);
   }
 
-  async collect(): Promise<NormalizedSession[]> {
+  async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
@@ -74,13 +74,38 @@ export class FreebuffAdapter implements AgentAdapter {
 
           if (!fs.existsSync(messagesFile)) continue;
 
+          const nativeId = `${projectName}__${chatFolder}`;
+          const expectedId = `freebuff_${machine.id}_${nativeId}`;
+          const existing = options?.existingSessions?.get(expectedId);
+
+          if (existing) {
+            const stat = fs.statSync(messagesFile);
+            if (stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
+              results.push({
+                schema_version: '1.0',
+                id: existing.id,
+                agent: 'freebuff',
+                machine,
+                session: {
+                  native_id: nativeId,
+                  title: '',
+                  workspace: '',
+                  created_at: existing.updatedAt,
+                  updated_at: existing.updatedAt,
+                },
+                messages: new Array(existing.messageCount),
+              });
+              continue;
+            }
+          }
+
           try {
             const session = this.parseChat(chatPath, projectName, chatFolder, machine);
             if (session && session.messages.length > 0) {
               results.push(session);
             }
           } catch {
-            // Skip unparseable chat directory
+            // Skip corrupted or unreadable chats
           }
         }
       }

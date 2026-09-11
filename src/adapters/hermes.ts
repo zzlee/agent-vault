@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import Database from 'better-sqlite3';
-import type { AgentAdapter } from './base.js';
+import type { AgentAdapter, CollectOptions } from './base.js';
 import type { NormalizedMessage, NormalizedSession, MessageRole } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
 import { getMachineInfo } from '../core/machine.js';
@@ -42,7 +42,7 @@ export class HermesAdapter implements AgentAdapter {
     return false;
   }
 
-  async collect(): Promise<NormalizedSession[]> {
+  async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
@@ -51,7 +51,7 @@ export class HermesAdapter implements AgentAdapter {
     // 1. Collect from main state.db
     const mainDbPath = path.join(this.hermesDir, 'state.db');
     if (fs.existsSync(mainDbPath)) {
-      results.push(...this.collectFromSqlite(mainDbPath, machine));
+      results.push(...this.collectFromSqlite(mainDbPath, machine, options));
     }
 
     // 2. Collect from profile state.db instances
@@ -63,7 +63,7 @@ export class HermesAdapter implements AgentAdapter {
         for (const pDir of profileDirs) {
           const profileDb = path.join(profilesDir, pDir.name, 'state.db');
           if (fs.existsSync(profileDb)) {
-            results.push(...this.collectFromSqlite(profileDb, machine, pDir.name));
+            results.push(...this.collectFromSqlite(profileDb, machine, options, pDir.name));
           }
         }
       } catch {
@@ -78,6 +78,31 @@ export class HermesAdapter implements AgentAdapter {
         const files = fs.readdirSync(sessionsDir).filter((f) => f.endsWith('.jsonl') || f.endsWith('.json'));
         for (const file of files) {
           const filePath = path.join(sessionsDir, file);
+          const baseName = path.basename(file, path.extname(file));
+          const expectedId = `hermes_${machine.id}_${baseName}`;
+          const existing = options?.existingSessions?.get(expectedId);
+
+          if (existing) {
+            const stat = fs.statSync(filePath);
+            if (stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
+              results.push({
+                schema_version: '1.0',
+                id: existing.id,
+                agent: 'hermes',
+                machine,
+                session: {
+                  native_id: baseName,
+                  title: '',
+                  workspace: '',
+                  created_at: existing.updatedAt,
+                  updated_at: existing.updatedAt,
+                },
+                messages: new Array(existing.messageCount),
+              });
+              continue;
+            }
+          }
+
           const session = this.parseJsonlFile(filePath, machine);
           if (session && session.messages.length > 0) {
             results.push(session);
@@ -94,6 +119,7 @@ export class HermesAdapter implements AgentAdapter {
   private collectFromSqlite(
     dbPath: string,
     machine: ReturnType<typeof getMachineInfo>,
+    options?: CollectOptions,
     profileName?: string
   ): NormalizedSession[] {
     const sessions: NormalizedSession[] = [];
@@ -161,71 +187,6 @@ export class HermesAdapter implements AgentAdapter {
       `);
 
       for (const row of rows) {
-        const rawMsgs = msgStmt.all(row.id) as Array<{
-          id: string | number;
-          role: string;
-          content: string | null;
-          timestamp: string | number | null;
-          tool_calls: string | null;
-          tool_name: string | null;
-        }>;
-
-        const messages: NormalizedMessage[] = [];
-        let stepIndex = 0;
-        let fallbackTitle = '';
-
-        for (const raw of rawMsgs) {
-          let role: MessageRole = 'assistant';
-          const rLower = (raw.role || '').toLowerCase();
-          if (rLower === 'user') role = 'user';
-          else if (rLower === 'system') role = 'system';
-          else if (rLower === 'tool') role = 'tool';
-
-          let content = raw.content || '';
-          let hasToolCalls = false;
-
-          if (raw.tool_calls) {
-            hasToolCalls = true;
-            try {
-              const tc = JSON.parse(raw.tool_calls);
-              content += `\n\n[Tool Calls: ${JSON.stringify(tc, null, 2)}]`;
-            } catch {
-              content += `\n\n[Tool Calls: ${raw.tool_calls}]`;
-            }
-          }
-
-          if (raw.tool_name) {
-            hasToolCalls = true;
-          }
-
-          const sanitizedContent = sanitizeText(content.trim());
-          if (!sanitizedContent) continue;
-
-          if (!fallbackTitle && role === 'user') {
-            fallbackTitle = sanitizedContent.slice(0, 80).replace(/[\r\n]+/g, ' ');
-          }
-
-          let msgTime: string | undefined;
-          if (raw.timestamp) {
-            if (typeof raw.timestamp === 'number') {
-              msgTime = new Date(raw.timestamp > 1e11 ? raw.timestamp : raw.timestamp * 1000).toISOString();
-            } else {
-              msgTime = new Date(raw.timestamp).toISOString();
-            }
-          }
-
-          messages.push({
-            id: String(raw.id || `msg-${stepIndex}`),
-            role,
-            content: sanitizedContent,
-            timestamp: msgTime,
-            step_index: stepIndex++,
-            has_tool_calls: hasToolCalls,
-          });
-        }
-
-        if (messages.length === 0) continue;
-
         let createdAt = new Date().toISOString();
         if (row.created_at) {
           if (typeof row.created_at === 'number') {
@@ -246,6 +207,103 @@ export class HermesAdapter implements AgentAdapter {
 
         const nativeId = profileName ? `${profileName}__${row.id}` : row.id;
         const sessionId = `hermes_${machine.id}_${nativeId}`;
+        const existing = options?.existingSessions?.get(sessionId);
+
+        if (existing && existing.updatedAt === updatedAt) {
+          sessions.push({
+            schema_version: '1.0',
+            id: sessionId,
+            agent: 'hermes',
+            machine,
+            session: {
+              native_id: nativeId,
+              title: row.title || '(untitled hermes session)',
+              workspace: row.workspace || undefined,
+              created_at: createdAt,
+              updated_at: updatedAt,
+            },
+            messages: new Array(existing.messageCount),
+          });
+          continue;
+        }
+
+        const rawMsgs = msgStmt.all(row.id) as Array<{
+          id: string | number;
+          role: string;
+          content: string | null;
+          timestamp: string | number | null;
+          tool_calls: string | null;
+          tool_name: string | null;
+        }>;
+
+        const messages: NormalizedMessage[] = [];
+        let stepIndex = 0;
+        let fallbackTitle = '';
+
+        for (const m of rawMsgs) {
+          let role: MessageRole = 'assistant';
+          const rLower = (m.role || '').toLowerCase();
+          if (rLower === 'user') role = 'user';
+          else if (rLower === 'system') role = 'system';
+          else if (rLower === 'tool') role = 'tool';
+          let rawContent = m.content || '';
+
+          // Format tool calls if present in Hermes schema
+          let hasToolCalls = false;
+          if (m.tool_calls) {
+            hasToolCalls = true;
+            try {
+              const parsedCalls = JSON.parse(m.tool_calls);
+              if (Array.isArray(parsedCalls)) {
+                for (const call of parsedCalls) {
+                  const callName = call.name || call.tool || 'tool';
+                  const callArgs = call.arguments || call.args || call.input;
+                  const argsStr = callArgs
+                    ? typeof callArgs === 'object'
+                      ? JSON.stringify(callArgs, null, 2)
+                      : String(callArgs)
+                    : '';
+                  const toolStr = `[Tool Call: ${callName}]${argsStr ? `\nInput: ${argsStr}` : ''}`;
+                  rawContent = rawContent ? `${rawContent}\n\n${toolStr}` : toolStr;
+                }
+              }
+            } catch {
+              // ignore malformed tool calls
+            }
+          }
+
+          if (m.tool_name && role === 'tool' && !rawContent.startsWith('[Tool Result')) {
+            rawContent = `[Tool Result: ${m.tool_name}]\n${rawContent}`;
+          }
+
+          const sanitizedContent = sanitizeText(rawContent.trim());
+          if (!sanitizedContent) continue;
+
+          if (!fallbackTitle && role === 'user') {
+            fallbackTitle = sanitizedContent.slice(0, 80);
+          }
+
+          let msgTime: string | undefined;
+          if (m.timestamp) {
+            if (typeof m.timestamp === 'number') {
+              msgTime = new Date(m.timestamp > 1e11 ? m.timestamp : m.timestamp * 1000).toISOString();
+            } else {
+              msgTime = new Date(m.timestamp).toISOString();
+            }
+          }
+
+          messages.push({
+            id: String(m.id),
+            role,
+            content: sanitizedContent,
+            timestamp: msgTime,
+            step_index: stepIndex++,
+            has_tool_calls: hasToolCalls,
+          });
+        }
+
+        if (messages.length === 0) continue;
+
         const title = sanitizeText(row.title || fallbackTitle || '(untitled session)');
 
         sessions.push({

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
-import type { AgentAdapter } from './base.js';
+import type { AgentAdapter, CollectOptions } from './base.js';
 import type { NormalizedMessage, NormalizedSession } from '../core/types.js';
 import { sanitizeText } from '../core/sanitizer.js';
 import { getMachineInfo } from '../core/machine.js';
@@ -20,7 +20,7 @@ export class PiAdapter implements AgentAdapter {
     return fs.existsSync(this.sessionsDir);
   }
 
-  async collect(): Promise<NormalizedSession[]> {
+  async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
     const results: NormalizedSession[] = [];
@@ -36,6 +36,33 @@ export class PiAdapter implements AgentAdapter {
 
         for (const file of files) {
           const filePath = path.join(dirPath, file);
+          const stat = fs.statSync(filePath);
+          const baseName = path.basename(file, '.jsonl');
+          const parts = baseName.split('_');
+          const uuid = parts.length > 1 ? parts.slice(1).join('_') : baseName;
+
+          const expectedId1 = `pi_${machine.id}_${uuid}`;
+          const expectedId2 = `pi_${machine.id}_${baseName}`;
+          const existing = options?.existingSessions?.get(expectedId1) || options?.existingSessions?.get(expectedId2);
+
+          if (existing && stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
+            results.push({
+              schema_version: '1.0',
+              id: existing.id,
+              agent: 'pi',
+              machine,
+              session: {
+                native_id: uuid,
+                title: '',
+                workspace: '',
+                created_at: existing.updatedAt,
+                updated_at: existing.updatedAt,
+              },
+              messages: new Array(existing.messageCount),
+            });
+            continue;
+          }
+
           try {
             const session = await this.parseSessionFile(filePath, machine);
             if (session && session.messages.length > 0) {
