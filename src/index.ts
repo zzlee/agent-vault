@@ -18,7 +18,7 @@ export function createCli(): Command {
   program
     .name('agent-vault')
     .description('Unified conversation history aggregator, search engine, and cross-machine vault for AI agents')
-    .version('1.0.0');
+    .version('1.1.0');
 
   program
     .command('sync')

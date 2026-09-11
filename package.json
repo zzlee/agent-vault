@@ -1,6 +1,6 @@
 {
   "name": "agent-vault",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (pi, opencode, agy, freebuff, hermes)",
   "type": "module",
   "main": "dist/index.js",
