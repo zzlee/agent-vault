@@ -34,12 +34,13 @@ export function createMcpServer(options: McpServerOptions = {}) {
     {
       query: z.string().describe('Search keyword or phrase'),
       agent: AgentEnum.optional().describe('Filter by agent name'),
+      machine: z.string().optional().describe('Filter by machine name or ID'),
       role: RoleEnum.optional().describe('Filter by message role (user, assistant, tool)'),
       workspace: z.string().optional().describe('Filter by workspace substring'),
       limit: z.number().optional().default(15).describe('Max results to return (default 15)'),
     },
-    async ({ query, agent, role, workspace, limit }) => {
-      const results = db.search(query, { agent, role, workspace, limit });
+    async ({ query, agent, machine, role, workspace, limit }) => {
+      const results = db.search(query, { agent, machine, role, workspace, limit });
       return {
         content: [
           {
@@ -90,11 +91,12 @@ export function createMcpServer(options: McpServerOptions = {}) {
     'List recent conversation sessions across agents and workspaces',
     {
       agent: AgentEnum.optional().describe('Filter by agent name'),
+      machine: z.string().optional().describe('Filter by machine name or ID'),
       workspace: z.string().optional().describe('Filter by workspace substring'),
       limit: z.number().optional().default(20).describe('Max sessions to return (default 20)'),
     },
-    async ({ agent, workspace, limit }) => {
-      const sessions = db.listSessions({ agent, workspace, limit });
+    async ({ agent, machine, workspace, limit }) => {
+      const sessions = db.listSessions({ agent, machine, workspace, limit });
       return {
         content: [
           {
