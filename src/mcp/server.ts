@@ -17,7 +17,7 @@ export interface McpServerOptions {
 export function createMcpServer(options: McpServerOptions = {}) {
   const server = new McpServer({
     name: 'agent-vault',
-    version: '0.1.0',
+    version: '1.0.0',
   });
 
   const db = new VaultDB(options.dbPath);
@@ -170,7 +170,7 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
           {
             status: 'ok',
             name: 'agent-vault-mcp',
-            version: '0.1.0',
+            version: '1.0.0',
             endpoints: {
               sse: `http://${host}:${port}/sse`,
               messages: `http://${host}:${port}/messages`,
