@@ -24,7 +24,7 @@ describe('MCP Server (Streamable HTTP & SSE)', () => {
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.equal(data.status, 'ok');
-    assert.equal(data.name, 'agent-vault-mcp');
+    assert.equal(data.name, 'agent-vault');
     assert.ok(data.endpoints.streamableHttp);
     assert.ok(data.endpoints.sse);
   });
