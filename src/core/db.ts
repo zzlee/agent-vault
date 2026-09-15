@@ -41,6 +41,37 @@ export class VaultDB {
       }
     }
 
+    // Check if search_fts has the old shadow content table search_fts_content
+    const hasShadowContent = this.db.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='search_fts_content'`
+    ).get();
+
+    if (hasShadowContent) {
+      // Migrate from internal-content FTS5 to external-content view table, saving ~600MB
+      this.db.exec(`
+        DROP TABLE IF EXISTS search_fts;
+        DROP VIEW IF EXISTS message_view;
+        CREATE VIEW message_view AS
+        SELECT m.rowid AS rowid, s.title AS title, s.workspace AS workspace, m.content AS content
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id;
+
+        CREATE VIRTUAL TABLE search_fts USING fts5(
+          title,
+          workspace,
+          content,
+          content='message_view',
+          content_rowid='rowid',
+          tokenize='unicode61'
+        );
+
+        INSERT INTO search_fts(rowid, title, workspace, content)
+        SELECT rowid, title, workspace, content FROM message_view;
+
+        VACUUM;
+      `);
+    }
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -76,13 +107,17 @@ export class VaultDB {
       CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace);
       CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 
+      CREATE VIEW IF NOT EXISTS message_view AS
+      SELECT m.rowid AS rowid, s.title AS title, s.workspace AS workspace, m.content AS content
+      FROM messages m
+      JOIN sessions s ON s.id = m.session_id;
+
       CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-        session_id UNINDEXED,
-        message_id UNINDEXED,
-        role UNINDEXED,
         title,
         workspace,
         content,
+        content='message_view',
+        content_rowid='rowid',
         tokenize = 'unicode61'
       );
     `);
@@ -119,8 +154,15 @@ export class VaultDB {
       )
     `);
 
+    this.deleteFtsStmt = this.db.prepare(`
+      INSERT INTO search_fts(search_fts, rowid, title, workspace, content)
+      SELECT 'delete', m.rowid, s.title, s.workspace, m.content
+      FROM messages m
+      JOIN sessions s ON s.id = m.session_id
+      WHERE s.id = ?
+    `);
+
     this.deleteMessagesStmt = this.db.prepare(`DELETE FROM messages WHERE session_id = ?`);
-    this.deleteFtsStmt = this.db.prepare(`DELETE FROM search_fts WHERE session_id = ?`);
 
     this.insertMsgStmt = this.db.prepare(`
       INSERT INTO messages (id, session_id, role, content, timestamp, step_index, has_tool_calls)
@@ -134,8 +176,8 @@ export class VaultDB {
     `);
 
     this.insertFtsStmt = this.db.prepare(`
-      INSERT INTO search_fts (session_id, message_id, role, title, workspace, content)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO search_fts (rowid, title, workspace, content)
+      VALUES (?, ?, ?, ?)
     `);
   }
 
@@ -144,13 +186,18 @@ export class VaultDB {
       DELETE FROM messages;
       DELETE FROM sessions;
       DROP TABLE IF EXISTS search_fts;
-      CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-        session_id UNINDEXED,
-        message_id UNINDEXED,
-        role UNINDEXED,
+      DROP VIEW IF EXISTS message_view;
+      CREATE VIEW message_view AS
+      SELECT m.rowid AS rowid, s.title AS title, s.workspace AS workspace, m.content AS content
+      FROM messages m
+      JOIN sessions s ON s.id = m.session_id;
+
+      CREATE VIRTUAL TABLE search_fts USING fts5(
         title,
         workspace,
         content,
+        content='message_view',
+        content_rowid='rowid',
         tokenize = 'unicode61'
       );
     `);
@@ -181,8 +228,8 @@ export class VaultDB {
       this.insertSessionStmt!.run(sessionParams);
     } else {
       this.upsertSessionStmt!.run(sessionParams);
-      this.deleteMessagesStmt!.run(session.id);
       this.deleteFtsStmt!.run(session.id);
+      this.deleteMessagesStmt!.run(session.id);
     }
 
     const seenMsgIds = new Set<string>();
@@ -197,7 +244,7 @@ export class VaultDB {
       }
       seenMsgIds.add(globalMsgId);
 
-      this.insertMsgStmt!.run(
+      const info = this.insertMsgStmt!.run(
         globalMsgId,
         session.id,
         msg.role,
@@ -209,9 +256,7 @@ export class VaultDB {
 
       if (msg.content && msg.content.trim()) {
         this.insertFtsStmt!.run(
-          session.id,
-          globalMsgId,
-          msg.role,
+          info.lastInsertRowid,
           session.session.title || '',
           session.session.workspace || '',
           msg.content
@@ -233,9 +278,9 @@ export class VaultDB {
   public deleteSession(id: string): void {
     this.ensurePreparedStatements();
     const runDelete = () => {
-      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
-      this.deleteMessagesStmt!.run(id);
       this.deleteFtsStmt!.run(id);
+      this.deleteMessagesStmt!.run(id);
+      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
     };
 
     if (this.db.inTransaction) {
@@ -296,10 +341,11 @@ export class VaultDB {
         s.title,
         s.workspace,
         s.updated_at AS updatedAt,
-        f.role,
-        snippet(search_fts, 5, ?, ?, '...', 25) AS snippet
-      FROM search_fts f
-      JOIN sessions s ON s.id = f.session_id
+        m.role,
+        snippet(search_fts, -1, ?, ?, '...', 25) AS snippet
+      FROM search_fts
+      JOIN messages m ON m.rowid = search_fts.rowid
+      JOIN sessions s ON s.id = m.session_id
       WHERE search_fts MATCH ?
     `;
 
@@ -318,7 +364,7 @@ export class VaultDB {
       params.push(`%${options.workspace}%`);
     }
     if (options.role) {
-      sql += ` AND LOWER(f.role) = ?`;
+      sql += ` AND LOWER(m.role) = ?`;
       params.push(options.role.toLowerCase());
     }
     if (options.since) {
