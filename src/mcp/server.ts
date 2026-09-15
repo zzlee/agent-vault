@@ -310,8 +310,7 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
             version: '1.2.0',
             description: 'Unified multi-agent conversation history and search vault for AI coding agents',
             endpoints: {
-              streamableHttp: `http://${host}:${port}/agent-vault`,
-              streamableHttpLegacy: `http://${host}:${port}/mcp`,
+              streamableHttp: `http://${host}:${port}/mcp`,
               sse: `http://${host}:${port}/sse`,
               messages: `http://${host}:${port}/messages`,
               health: `http://${host}:${port}/health`,
@@ -322,12 +321,12 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
                 mcp: {
                   'agent-vault': {
                     type: 'remote',
-                    url: `http://${host}:${port}/agent-vault`,
+                    url: `http://${host}:${port}/mcp`,
                     enabled: true,
                   },
                 },
               },
-              claudeCode: `claude mcp add agent-vault http://${host}:${port}/agent-vault`,
+              claudeCode: `claude mcp add agent-vault http://${host}:${port}/mcp`,
             },
           },
           null,
@@ -414,19 +413,19 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
     httpServer.listen(port, host, () => {
       console.log(pc.bold(pc.cyan('🛡️  Agent Vault MCP Server Started!')));
       console.log(`   ${pc.green('•')} Listening on:     ${pc.bold(`http://${host}:${port}`)}`);
-      console.log(`   ${pc.green('•')} Streamable HTTP: ${pc.bold(`http://${host}:${port}/agent-vault`)} ${pc.dim('(or /mcp)')}`);
+      console.log(`   ${pc.green('•')} Streamable HTTP: ${pc.bold(`http://${host}:${port}/mcp`)}`);
       console.log(`   ${pc.green('•')} SSE Endpoint:   ${pc.bold(`http://${host}:${port}/sse`)}`);
       console.log(`   ${pc.green('•')} Messages:       ${pc.bold(`http://${host}:${port}/messages`)}`);
       console.log(`   ${pc.green('•')} Health:         ${pc.bold(`http://${host}:${port}/health`)}`);
       console.log(pc.cyan('\n📋 Recommended AI Agent Configurations:'));
       console.log(`   ${pc.bold('OpenCode')} (in opencode.json):`);
       console.log(
-        pc.dim(`     "mcp": {\n       "agent-vault": {\n         "type": "remote",\n         "url": "http://${host}:${port}/agent-vault",\n         "enabled": true\n       }\n     }`)
+        pc.dim(`     "mcp": {\n       "agent-vault": {\n         "type": "remote",\n         "url": "http://${host}:${port}/mcp",\n         "enabled": true\n       }\n     }`)
       );
       console.log(`   ${pc.bold('Claude Code')}:`);
-      console.log(pc.dim(`     claude mcp add agent-vault http://${host}:${port}/agent-vault`));
+      console.log(pc.dim(`     claude mcp add agent-vault http://${host}:${port}/mcp`));
       console.log(`   ${pc.bold('Cursor / Antigravity / Windsurf')}:`);
-      console.log(pc.dim(`     Name: agent-vault  |  Type: HTTP / SSE  |  URL: http://${host}:${port}/agent-vault`));
+      console.log(pc.dim(`     Name: agent-vault  |  Type: HTTP / SSE  |  URL: http://${host}:${port}/mcp`));
       console.log(pc.gray('\nPress Ctrl+C to stop.'));
       resolve(httpServer);
     });
