@@ -57,3 +57,11 @@ export interface SessionSummary {
   updatedAt: string;
   messageCount: number;
 }
+
+export interface WorkspaceSummary {
+  workspace: string;
+  sessionCount: number;
+  agents: AgentType[];
+  lastUpdatedAt: string;
+}
+

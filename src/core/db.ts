@@ -1,12 +1,17 @@
-import { type Database as DatabaseType } from 'better-sqlite3';
-import Database from 'better-sqlite3';
+import Database, { type Database as DatabaseType, type Statement } from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { NormalizedSession, SearchResult, SessionSummary } from './types.js';
+import type { NormalizedSession, SearchResult, SessionSummary, WorkspaceSummary } from './types.js';
 import { getDbPath } from './paths.js';
 
 export class VaultDB {
   private db: DatabaseType;
+  private upsertSessionStmt?: Statement;
+  private insertSessionStmt?: Statement;
+  private deleteMessagesStmt?: Statement;
+  private deleteFtsStmt?: Statement;
+  private insertMsgStmt?: Statement;
+  private insertFtsStmt?: Statement;
 
   constructor(dbPath?: string) {
     const finalPath = dbPath || getDbPath();
@@ -14,6 +19,10 @@ export class VaultDB {
 
     this.db = new Database(finalPath);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('temp_store = MEMORY');
+    this.db.pragma('cache_size = -64000');
+    this.db.pragma('mmap_size = 268435456');
     this.db.pragma('foreign_keys = ON');
     this.initSchema();
   }
@@ -78,89 +87,153 @@ export class VaultDB {
     `);
   }
 
-  public upsertSession(session: NormalizedSession, filePath?: string): void {
-    const upsertTx = this.db.transaction(() => {
-      // 1. Upsert session row
-      const upsertSessionStmt = this.db.prepare(`
-        INSERT INTO sessions (
-          id, agent, machine_id, machine_name, hostname, platform, native_id, title, workspace,
-          created_at, updated_at, message_count, file_path
-        ) VALUES (
-          @id, @agent, @machine_id, @machine_name, @hostname, @platform, @native_id, @title, @workspace,
-          @created_at, @updated_at, @message_count, @file_path
-        )
-        ON CONFLICT(id) DO UPDATE SET
-          machine_id = excluded.machine_id,
-          machine_name = excluded.machine_name,
-          title = excluded.title,
-          workspace = excluded.workspace,
-          updated_at = excluded.updated_at,
-          message_count = excluded.message_count,
-          file_path = excluded.file_path
-      `);
+  private ensurePreparedStatements(): void {
+    if (this.upsertSessionStmt) return;
 
-      upsertSessionStmt.run({
-        id: session.id,
-        agent: session.agent,
-        machine_id: session.machine?.id || session.machine?.hostname || 'unknown',
-        machine_name: session.machine?.name || session.machine?.hostname || 'unknown',
-        hostname: session.machine?.hostname || 'unknown',
-        platform: session.machine?.platform || '',
-        native_id: session.session.native_id,
-        title: session.session.title || '(untitled)',
-        workspace: session.session.workspace || '',
-        created_at: session.session.created_at,
-        updated_at: session.session.updated_at,
-        message_count: session.messages.length,
-        file_path: filePath || '',
-      });
+    this.upsertSessionStmt = this.db.prepare(`
+      INSERT INTO sessions (
+        id, agent, machine_id, machine_name, hostname, platform, native_id, title, workspace,
+        created_at, updated_at, message_count, file_path
+      ) VALUES (
+        @id, @agent, @machine_id, @machine_name, @hostname, @platform, @native_id, @title, @workspace,
+        @created_at, @updated_at, @message_count, @file_path
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        machine_id = excluded.machine_id,
+        machine_name = excluded.machine_name,
+        title = excluded.title,
+        workspace = excluded.workspace,
+        updated_at = excluded.updated_at,
+        message_count = excluded.message_count,
+        file_path = excluded.file_path
+    `);
 
-      // 2. Remove previous messages and FTS entries
-      this.db.prepare(`DELETE FROM messages WHERE session_id = ?`).run(session.id);
-      this.db.prepare(`DELETE FROM search_fts WHERE session_id = ?`).run(session.id);
+    this.insertSessionStmt = this.db.prepare(`
+      INSERT INTO sessions (
+        id, agent, machine_id, machine_name, hostname, platform, native_id, title, workspace,
+        created_at, updated_at, message_count, file_path
+      ) VALUES (
+        @id, @agent, @machine_id, @machine_name, @hostname, @platform, @native_id, @title, @workspace,
+        @created_at, @updated_at, @message_count, @file_path
+      )
+    `);
 
-      // 3. Insert messages and FTS entries
-      const insertMsgStmt = this.db.prepare(`
-        INSERT INTO messages (id, session_id, role, content, timestamp, step_index, has_tool_calls)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
+    this.deleteMessagesStmt = this.db.prepare(`DELETE FROM messages WHERE session_id = ?`);
+    this.deleteFtsStmt = this.db.prepare(`DELETE FROM search_fts WHERE session_id = ?`);
 
-      const insertFtsStmt = this.db.prepare(`
-        INSERT INTO search_fts (session_id, message_id, role, title, workspace, content)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
+    this.insertMsgStmt = this.db.prepare(`
+      INSERT INTO messages (id, session_id, role, content, timestamp, step_index, has_tool_calls)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
 
-      for (const msg of session.messages) {
-        const globalMsgId = `${session.id}:${msg.id}`;
-        insertMsgStmt.run(
-          globalMsgId,
+    this.insertFtsStmt = this.db.prepare(`
+      INSERT INTO search_fts (session_id, message_id, role, title, workspace, content)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+  }
+
+  public clearAll(): void {
+    this.db.exec(`
+      DELETE FROM messages;
+      DELETE FROM sessions;
+      DROP TABLE IF EXISTS search_fts;
+      CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+        session_id UNINDEXED,
+        message_id UNINDEXED,
+        role UNINDEXED,
+        title,
+        workspace,
+        content,
+        tokenize = 'unicode61'
+      );
+    `);
+    this.deleteFtsStmt = undefined;
+    this.insertFtsStmt = undefined;
+  }
+
+  private doInsertSessionContent(session: NormalizedSession, filePath?: string, isFresh: boolean = false): void {
+    this.ensurePreparedStatements();
+
+    const sessionParams = {
+      id: session.id,
+      agent: session.agent,
+      machine_id: session.machine?.id || session.machine?.hostname || 'unknown',
+      machine_name: session.machine?.name || session.machine?.hostname || 'unknown',
+      hostname: session.machine?.hostname || 'unknown',
+      platform: session.machine?.platform || '',
+      native_id: session.session.native_id,
+      title: session.session.title || '(untitled)',
+      workspace: session.session.workspace || '',
+      created_at: session.session.created_at,
+      updated_at: session.session.updated_at,
+      message_count: session.messages.length,
+      file_path: filePath || '',
+    };
+
+    if (isFresh) {
+      this.insertSessionStmt!.run(sessionParams);
+    } else {
+      this.upsertSessionStmt!.run(sessionParams);
+      this.deleteMessagesStmt!.run(session.id);
+      this.deleteFtsStmt!.run(session.id);
+    }
+
+    for (const msg of session.messages) {
+      const globalMsgId = `${session.id}:${msg.id}`;
+      this.insertMsgStmt!.run(
+        globalMsgId,
+        session.id,
+        msg.role,
+        msg.content,
+        msg.timestamp || null,
+        msg.step_index ?? null,
+        msg.has_tool_calls ? 1 : 0
+      );
+
+      if (msg.content && msg.content.trim()) {
+        this.insertFtsStmt!.run(
           session.id,
+          globalMsgId,
           msg.role,
-          msg.content,
-          msg.timestamp || null,
-          msg.step_index ?? null,
-          msg.has_tool_calls ? 1 : 0
+          session.session.title || '',
+          session.session.workspace || '',
+          msg.content
         );
+      }
+    }
+  }
 
-        if (msg.content && msg.content.trim()) {
-          insertFtsStmt.run(
-            session.id,
-            globalMsgId,
-            msg.role,
-            session.session.title || '',
-            session.session.workspace || '',
-            msg.content
-          );
-        }
+  public upsertSession(session: NormalizedSession, filePath?: string): void {
+    if (this.db.inTransaction) {
+      this.doInsertSessionContent(session, filePath, false);
+    } else {
+      this.db.transaction(() => {
+        this.doInsertSessionContent(session, filePath, false);
+      })();
+    }
+  }
+
+  public insertSessionsBatch(items: Array<{ session: NormalizedSession; filePath?: string }>, isFresh: boolean = true): void {
+    const tx = this.db.transaction(() => {
+      for (const item of items) {
+        this.doInsertSessionContent(item.session, item.filePath, isFresh);
       }
     });
-
-    upsertTx();
+    tx();
   }
 
   public search(
     query: string,
-    options: { agent?: string; machine?: string; workspace?: string; role?: string; limit?: number; since?: string; until?: string } = {}
+    options: {
+      agent?: string;
+      machine?: string;
+      workspace?: string;
+      role?: string;
+      limit?: number;
+      since?: string;
+      until?: string;
+      highlight?: { open: string; close: string };
+    } = {}
   ): SearchResult[] {
     const limit = options.limit || 20;
 
@@ -175,6 +248,9 @@ export class VaultDB {
 
     if (!sanitizedQuery) return [];
 
+    const openTag = options.highlight?.open ?? '\x1b[33m\x1b[1m';
+    const closeTag = options.highlight?.close ?? '\x1b[0m';
+
     let sql = `
       SELECT 
         s.id AS sessionId,
@@ -185,13 +261,13 @@ export class VaultDB {
         s.workspace,
         s.updated_at AS updatedAt,
         f.role,
-        snippet(search_fts, 5, '\x1b[33m\x1b[1m', '\x1b[0m', '...', 25) AS snippet
+        snippet(search_fts, 5, ?, ?, '...', 25) AS snippet
       FROM search_fts f
       JOIN sessions s ON s.id = f.session_id
       WHERE search_fts MATCH ?
     `;
 
-    const params: unknown[] = [sanitizedQuery];
+    const params: unknown[] = [openTag, closeTag, sanitizedQuery];
 
     if (options.agent) {
       sql += ` AND s.agent = ?`;
@@ -222,6 +298,42 @@ export class VaultDB {
     params.push(limit);
 
     return this.db.prepare(sql).all(...params) as SearchResult[];
+  }
+
+  public listWorkspaces(options: { limit?: number; search?: string } = {}): WorkspaceSummary[] {
+    const limit = options.limit || 50;
+    let sql = `
+      SELECT 
+        workspace,
+        COUNT(*) as sessionCount,
+        MAX(updated_at) as lastUpdatedAt,
+        GROUP_CONCAT(DISTINCT agent) as agents
+      FROM sessions
+      WHERE workspace IS NOT NULL AND TRIM(workspace) != ''
+    `;
+    const params: unknown[] = [];
+
+    if (options.search) {
+      sql += ` AND workspace LIKE ?`;
+      params.push(`%${options.search}%`);
+    }
+
+    sql += ` GROUP BY workspace ORDER BY lastUpdatedAt DESC LIMIT ?`;
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      workspace: string;
+      sessionCount: number;
+      lastUpdatedAt: string;
+      agents: string;
+    }>;
+
+    return rows.map((r) => ({
+      workspace: r.workspace,
+      sessionCount: r.sessionCount,
+      agents: (r.agents ? r.agents.split(',') : []) as any,
+      lastUpdatedAt: r.lastUpdatedAt,
+    }));
   }
 
   public listSessions(options: { agent?: string; machine?: string; workspace?: string; limit?: number } = {}): SessionSummary[] {

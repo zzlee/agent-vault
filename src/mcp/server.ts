@@ -27,20 +27,43 @@ export function createMcpServer(options: McpServerOptions = {}) {
   const AgentEnum = z.enum(['pi', 'opencode', 'agy', 'freebuff', 'hermes']);
   const RoleEnum = z.enum(['user', 'assistant', 'tool', 'system']);
 
+  const AGENT_DESCRIPTIONS: Record<string, string> = {
+    pi: 'Pi terminal coding agent (~/.pi/agent/sessions)',
+    opencode: 'OpenCode assistant (~/.local/share/opencode)',
+    agy: 'Google Antigravity IDE & CLI agent (~/.gemini/antigravity-cli)',
+    freebuff: 'Codebuff / Manicode AI project chats (~/.config/manicode)',
+    hermes: 'Nous Research Hermes autonomous agent (~/.hermes)',
+  };
+
   // Tool 1: vault_search
   server.tool(
     'vault_search',
-    'Search conversation history across all agents (pi, opencode, agy, freebuff, hermes) and machines using SQLite FTS5',
+    'Search historical conversation messages across multiple AI coding agents (pi, opencode, agy, freebuff, hermes) and machines using SQLite FTS5 full-text search. Results include markdown-highlighted snippets, role, workspace, and timestamps.',
     {
-      query: z.string().describe('Search keyword or phrase'),
-      agent: AgentEnum.optional().describe('Filter by agent name'),
-      machine: z.string().optional().describe('Filter by machine name or ID'),
-      role: RoleEnum.optional().describe('Filter by message role (user, assistant, tool)'),
-      workspace: z.string().optional().describe('Filter by workspace substring'),
-      limit: z.number().optional().default(15).describe('Max results to return (default 15)'),
+      query: z.string().describe('Search keyword, error message, command, or technical term'),
+      agent: AgentEnum.optional().describe(
+        "Filter by AI agent: 'pi' (Pi terminal agent), 'opencode' (OpenCode assistant), 'agy' (Antigravity IDE/CLI), 'freebuff' (Codebuff/Manicode), 'hermes' (Nous Research agent)"
+      ),
+      machine: z.string().optional().describe('Filter by machine hostname or machine ID (e.g. thinkpad, desktop)'),
+      role: RoleEnum.optional().describe(
+        "Filter by message role: 'user' (user requests/prompts), 'assistant' (AI plans/solutions), 'tool' (terminal command outputs, compiler errors, tool call results)"
+      ),
+      workspace: z.string().optional().describe('Filter by project directory path or workspace substring (e.g. /home/user/project)'),
+      since: z.string().optional().describe('Filter messages updated on or after date (YYYY-MM-DD)'),
+      until: z.string().optional().describe('Filter messages updated on or before date (YYYY-MM-DD)'),
+      limit: z.number().optional().default(15).describe('Maximum matching messages to return (default: 15)'),
     },
-    async ({ query, agent, machine, role, workspace, limit }) => {
-      const results = db.search(query, { agent, machine, role, workspace, limit });
+    async ({ query, agent, machine, role, workspace, since, until, limit }) => {
+      const results = db.search(query, {
+        agent,
+        machine,
+        role,
+        workspace,
+        since,
+        until,
+        limit,
+        highlight: { open: '**', close: '**' },
+      });
       return {
         content: [
           {
@@ -55,11 +78,11 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 2: vault_get_session
   server.tool(
     'vault_get_session',
-    'Retrieve full conversation messages for a specific session ID',
+    'Retrieve full turn-by-turn conversation messages and execution traces for a specific session ID. Use this after finding relevant sessions with vault_search.',
     {
-      sessionId: z.string().describe('Unique session ID (e.g. pi_host_xxx)'),
-      role: RoleEnum.optional().describe('Filter messages by role (user, assistant, tool)'),
-      noTools: z.boolean().optional().describe('Hide tool execution outputs from view'),
+      sessionId: z.string().describe('Unique session ID (e.g. opencode_machine_ses_xxx, pi_machine_xxx, agy_machine_xxx)'),
+      role: RoleEnum.optional().describe("Filter messages by role: 'user', 'assistant', 'tool'"),
+      noTools: z.boolean().optional().describe('Hide tool execution outputs to view only human-readable discussion'),
     },
     async ({ sessionId, role, noTools }) => {
       const data = db.getSession(sessionId, { role, noTools });
@@ -85,15 +108,36 @@ export function createMcpServer(options: McpServerOptions = {}) {
     }
   );
 
-  // Tool 3: vault_list_sessions
+  // Tool 3: vault_list_workspaces (NEW)
+  server.tool(
+    'vault_list_workspaces',
+    'List all recorded project workspaces/repositories across all AI agents, including session counts, active agents, and last updated timestamps.',
+    {
+      search: z.string().optional().describe('Filter workspace paths by substring or project name'),
+      limit: z.number().optional().default(30).describe('Maximum number of workspaces to return (default: 30)'),
+    },
+    async ({ search, limit }) => {
+      const workspaces = db.listWorkspaces({ search, limit });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(workspaces, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool 4: vault_list_sessions
   server.tool(
     'vault_list_sessions',
-    'List recent conversation sessions across agents and workspaces',
+    'List recent conversation sessions across agents, machines, and workspaces. Useful for exploring available sessions or recent activities.',
     {
-      agent: AgentEnum.optional().describe('Filter by agent name'),
+      agent: AgentEnum.optional().describe('Filter by AI agent name (pi, opencode, agy, freebuff, hermes)'),
       machine: z.string().optional().describe('Filter by machine name or ID'),
-      workspace: z.string().optional().describe('Filter by workspace substring'),
-      limit: z.number().optional().default(20).describe('Max sessions to return (default 20)'),
+      workspace: z.string().optional().describe('Filter by workspace path substring'),
+      limit: z.number().optional().default(20).describe('Max sessions to return (default: 20)'),
     },
     async ({ agent, machine, workspace, limit }) => {
       const sessions = db.listSessions({ agent, machine, workspace, limit });
@@ -108,30 +152,34 @@ export function createMcpServer(options: McpServerOptions = {}) {
     }
   );
 
-  // Tool 4: vault_get_stats
+  // Tool 5: vault_get_stats
   server.tool(
     'vault_get_stats',
-    'Get statistics on indexed sessions and messages across all agents',
+    'Get comprehensive statistics on indexed sessions and messages across all AI agents (pi, opencode, agy, freebuff, hermes) and machines.',
     {},
     async () => {
       const stats = db.getStats();
+      const payload = {
+        ...stats,
+        agentDescriptions: AGENT_DESCRIPTIONS,
+      };
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(stats, null, 2),
+            text: JSON.stringify(payload, null, 2),
           },
         ],
       };
     }
   );
 
-  // Tool 5: vault_sync
+  // Tool 6: vault_sync
   server.tool(
     'vault_sync',
-    'Trigger a local synchronization of conversation histories from local agents (pi, opencode, agy, freebuff, hermes)',
+    'Trigger a local synchronization of conversation histories from installed local agents (pi, opencode, agy, freebuff, hermes) into the vault database.',
     {
-      agent: AgentEnum.optional().describe('Optional specific agent to sync'),
+      agent: AgentEnum.optional().describe('Optional specific agent to sync (pi, opencode, agy, freebuff, hermes)'),
     },
     async ({ agent }) => {
       const syncer = new Syncer(db);
@@ -141,6 +189,81 @@ export function createMcpServer(options: McpServerOptions = {}) {
           {
             type: 'text',
             text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
+  // Prompt 1: recall_solution
+  server.prompt(
+    'recall_solution',
+    'Recall past troubleshooting steps, architectural decisions, and bug fixes from multi-agent histories',
+    {
+      topic: z.string().describe('The problem, error message, technology, or topic to look up'),
+      workspace: z.string().optional().describe('Optional project workspace path to restrict search to'),
+      agent: AgentEnum.optional().describe('Optional specific agent to filter by'),
+    },
+    ({ topic, workspace, agent }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Please search the agent-vault multi-agent history for: "${topic}".` +
+              (workspace ? ` Restrict to workspace "${workspace}".` : '') +
+              (agent ? ` Filter by agent "${agent}".` : '') +
+              `\n\nUse vault_search to find matching messages across agents, and then use vault_get_session to inspect full solutions and commands. Synthesize the findings into clear actionable steps.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // Resource 1: vault://overview
+  server.resource(
+    'vault_overview',
+    'vault://overview',
+    { description: 'High-level summary of the multi-agent conversation vault (agents, machines, statistics)' },
+    async (uri: any) => {
+      const stats = db.getStats();
+      const workspaces = db.listWorkspaces({ limit: 15 });
+      const summaryText = [
+        '# agent-vault Multi-Agent Conversation Database',
+        '',
+        'agent-vault indexes conversation histories, decision traces, and tool execution logs across multiple AI coding agents and development machines.',
+        '',
+        '## Supported Agents:',
+        '- `pi`: Pi terminal coding agent sessions (~/.pi/agent/sessions)',
+        '- `opencode`: OpenCode local assistant (~/.local/share/opencode)',
+        '- `agy`: Google Antigravity IDE & CLI agent (~/.gemini/antigravity-cli)',
+        '- `freebuff`: Codebuff / Manicode AI project chats (~/.config/manicode)',
+        '- `hermes`: Nous Research Hermes autonomous agent (~/.hermes)',
+        '',
+        '## Current Vault Statistics:',
+        `- Total Sessions: ${stats.totalSessions}`,
+        `- Total Messages: ${stats.totalMessages}`,
+        '',
+        '### Sessions by Agent:',
+        ...Object.entries(stats.agents).map(([a, count]) => `- ${a}: ${count}`),
+        '',
+        '### Sessions by Machine:',
+        ...Object.entries(stats.machines).map(([m, count]) => `- ${m}: ${count}`),
+        '',
+        '## Top Workspaces:',
+        ...workspaces.map(
+          (w) =>
+            `- ${w.workspace} (${w.sessionCount} sessions, agents: ${w.agents.join(', ')}, updated: ${w.lastUpdatedAt})`
+        ),
+      ].join('\n');
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'text/markdown',
+            text: summaryText,
           },
         ],
       };

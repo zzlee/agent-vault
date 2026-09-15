@@ -16,7 +16,7 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
    - Partitioned by agent and machine identifier to prevent Git merge conflicts.
 2. **Local High-Performance Query Layer (`.cache/vault.db`)**:
    - Embedded SQLite database with **FTS5** (Full-Text Search).
-   - Rebuilt automatically upon fresh clone (`./scripts/init.sh`), on-demand (`agent-vault reindex`), or after remote pulls (`agent-vault pull`).
+   - Built on-demand (`agent-vault reindex`), after remote pulls (`agent-vault pull`), or during data vault setup.
    - Ignored in `.gitignore` to avoid repository bloat and binary merge conflicts.
 
 ---
@@ -111,7 +111,7 @@ To support a new AI agent (e.g. Claude Code, Cursor, Aider, Codex):
 ## 6. Fresh Clone & Multi-Machine Commands
 
 ```bash
-# Setup on a newly cloned machine (builds TS, creates .cache/, links CLI, indexes)
+# Setup CLI on a newly cloned machine (installs deps, builds TS, links CLI globally)
 ./scripts/init.sh
 
 # Verify environment, path detection, and agent status

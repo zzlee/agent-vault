@@ -41,6 +41,7 @@ describe('MCP Server (Streamable HTTP & SSE)', () => {
     assert.ok(toolNames.includes('vault_search'));
     assert.ok(toolNames.includes('vault_get_stats'));
     assert.ok(toolNames.includes('vault_list_sessions'));
+    assert.ok(toolNames.includes('vault_list_workspaces'));
     assert.ok(toolNames.includes('vault_get_session'));
     assert.ok(toolNames.includes('vault_sync'));
 
@@ -50,6 +51,13 @@ describe('MCP Server (Streamable HTTP & SSE)', () => {
     assert.equal(statsResult.content[0].type, 'text');
     const stats = JSON.parse(statsResult.content[0].text);
     assert.ok(typeof stats.totalSessions === 'number');
+    assert.ok(stats.agentDescriptions && typeof stats.agentDescriptions === 'object');
+
+    // Execute vault_list_workspaces
+    const wsResult = await client.callTool({ name: 'vault_list_workspaces', arguments: { limit: 5 } });
+    assert.ok(wsResult.content && wsResult.content.length > 0);
+    const workspaces = JSON.parse(wsResult.content[0].text);
+    assert.ok(Array.isArray(workspaces));
 
     // Execute vault_list_sessions
     const listResult = await client.callTool({ name: 'vault_list_sessions', arguments: { limit: 5 } });

@@ -52,7 +52,7 @@ cd conv-hist
 ./scripts/init.sh
 ```
 
-`init.sh` automatically installs dependencies, builds the TypeScript project, creates `.cache/`, links the `agent-vault` binary globally, and rebuilds the local SQLite index.
+`init.sh` automatically installs dependencies, builds the TypeScript project into `dist/`, and links the `agent-vault` binary globally.
 
 ### 2. Verify Your Environment
 

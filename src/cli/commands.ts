@@ -5,7 +5,7 @@ import os from 'node:os';
 import pc from 'picocolors';
 import { VaultDB } from '../core/db.js';
 import { Syncer } from '../core/syncer.js';
-import { Indexer } from '../core/indexer.js';
+import { Indexer, type ReindexProgress } from '../core/indexer.js';
 import type { AgentType } from '../core/types.js';
 import {
   formatSessionList,
@@ -148,11 +148,50 @@ export async function handleReindex(): Promise<void> {
 
   console.log(pc.cyan('⚡ Re-indexing all stored sessions from data/sessions/ into SQLite FTS5...'));
   const start = Date.now();
-  const { indexedCount, errors } = await indexer.reindexAll();
-  const duration = ((Date.now() - start) / 1000).toFixed(2);
 
+  const isTty = process.stdout.isTTY;
+  let lastLoggedPercent = -1;
+
+  const renderProgress = (progress: ReindexProgress) => {
+    const { current, total, messageCount, session } = progress;
+    const percent = Math.min(100, Math.floor((current / total) * 100));
+    const elapsedSec = (Date.now() - start) / 1000;
+    const speed = elapsedSec > 0 ? (current / elapsedSec).toFixed(0) : '0';
+
+    if (isTty) {
+      const barWidth = 28;
+      const completed = Math.round((barWidth * current) / total);
+      const bar =
+        '='.repeat(Math.max(0, completed - 1)) +
+        (completed > 0 && completed < barWidth ? '>' : completed === barWidth ? '=' : '') +
+        ' '.repeat(Math.max(0, barWidth - completed));
+
+      const agentTag = session?.agent ? ` [${session.agent}]` : '';
+      process.stdout.write(
+        `\r[${pc.cyan(bar)}] ${pc.bold(`${percent}%`)} (${current}/${total} sessions) | ${pc.dim(`${messageCount.toLocaleString()} msgs`)} | ${pc.yellow(`${speed} sess/s`)}${pc.dim(agentTag)}\x1b[K`
+      );
+    } else {
+      if (percent % 10 === 0 && percent !== lastLoggedPercent) {
+        lastLoggedPercent = percent;
+        console.log(`  Progress: ${percent}% (${current}/${total} sessions, ${messageCount.toLocaleString()} messages)...`);
+      }
+    }
+  };
+
+  const { indexedCount, messageCount, errors } = await indexer.reindexAll({
+    onProgress: renderProgress,
+  });
+
+  if (isTty) {
+    process.stdout.write('\n');
+  }
+
+  const duration = ((Date.now() - start) / 1000).toFixed(2);
   console.log(
-    pc.green(`✓ Re-indexed ${indexedCount} sessions in ${duration}s` + (errors > 0 ? pc.yellow(` (${errors} errors)`) : ''))
+    pc.green(
+      `✓ Re-indexed ${indexedCount.toLocaleString()} sessions (${messageCount.toLocaleString()} messages) in ${duration}s` +
+        (errors > 0 ? pc.yellow(` (${errors} errors)`) : '')
+    )
   );
 
   db.close();

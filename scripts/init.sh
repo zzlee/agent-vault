@@ -2,11 +2,11 @@
 set -e
 
 # ==============================================================================
-# agent-vault Fresh Clone Setup & Initialization Script
+# agent-vault Fresh Clone CLI Setup & Link Script
 # ==============================================================================
 
 echo "--------------------------------------------------------"
-echo "🛡️  Initializing agent-vault on this machine..."
+echo "🛡️  Building and linking agent-vault CLI on this machine..."
 echo "--------------------------------------------------------"
 
 # 1. Check Node.js version
@@ -36,25 +36,13 @@ fi
 echo "🔨 Building project..."
 npm run build
 
-# 4. Ensure data and cache directories exist
-mkdir -p .cache
-mkdir -p data/sessions/pi
-mkdir -p data/sessions/opencode
-mkdir -p data/sessions/agy
-mkdir -p data/sessions/freebuff
-mkdir -p data/sessions/hermes
-
-# 5. Run initial re-index if there are existing sessions
-echo "⚡ Setting up local SQLite FTS5 database index..."
-node bin/agent-vault.js reindex
-
-# 6. Globally link CLI command
+# 4. Globally link CLI command
 echo "🔗 Linking 'agent-vault' command globally via npm link..."
 npm link || {
   echo "⚠️ Note: 'npm link' requires global write permission. You can also run: node bin/agent-vault.js"
 }
-echo "✅ Initialization complete! You can now run:"
-echo "   agent-vault sync      # Ingest local chat histories"
-echo "   agent-vault list      # List all stored sessions"
-echo "   agent-vault search \"<keyword>\""
+
+echo "✅ CLI setup complete! You can now run:"
+echo "   agent-vault doctor    # Diagnose local agents and environment"
+echo "   agent-vault --help    # View available commands"
 echo "--------------------------------------------------------"
