@@ -99,6 +99,7 @@ export class OpenCodeAdapter implements AgentAdapter {
 
           const messages: NormalizedMessage[] = [];
           let stepIndex = 0;
+          const seenMsgIds = new Map<string, number>();
 
           for (const m of rawMessages) {
             let role: 'user' | 'assistant' | 'tool' | 'system' = 'assistant';
@@ -115,7 +116,7 @@ export class OpenCodeAdapter implements AgentAdapter {
             let hasToolCalls = false;
 
             for (const part of parts) {
-              if (part.text) {
+              if (part.type === 'text' && typeof part.text === 'string') {
                 contentText += (contentText ? '\n\n' : '') + part.text;
               }
               if (part.type === 'tool' || part.type === 'tool_use' || part.type === 'tool_call') {
@@ -135,8 +136,16 @@ export class OpenCodeAdapter implements AgentAdapter {
             }
 
             if (contentText.trim()) {
+              const baseId = m.id || `msg_${stepIndex}`;
+              let msgId = baseId;
+              const count = seenMsgIds.get(baseId) || 0;
+              if (count > 0) {
+                msgId = `${baseId}_${count}`;
+              }
+              seenMsgIds.set(baseId, count + 1);
+
               messages.push({
-                id: m.id,
+                id: msgId,
                 role,
                 content: sanitizeText(contentText.trim()),
                 timestamp: new Date(m.time_created).toISOString(),

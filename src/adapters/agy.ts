@@ -148,6 +148,8 @@ export class AgyAdapter implements AgentAdapter {
     });
 
     let currentStep = 0;
+    const seenMsgIds = new Map<string, number>();
+
     for await (const line of rl) {
       if (!line.trim()) continue;
       try {
@@ -179,8 +181,17 @@ export class AgyAdapter implements AgentAdapter {
         }
 
         if (textContent.trim()) {
+          const baseStep = item.step_index ?? currentStep;
+          const baseId = `agy_${baseStep}`;
+          let msgId = baseId;
+          const count = seenMsgIds.get(baseId) || 0;
+          if (count > 0) {
+            msgId = `${baseId}_${count}`;
+          }
+          seenMsgIds.set(baseId, count + 1);
+
           messages.push({
-            id: `agy_${item.step_index ?? currentStep}`,
+            id: msgId,
             role,
             content: sanitizeText(textContent.trim()),
             timestamp: item.created_at,

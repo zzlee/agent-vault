@@ -183,6 +183,7 @@ export class FreebuffAdapter implements AgentAdapter {
     const messages: NormalizedMessage[] = [];
     let stepIndex = 0;
     let fallbackTitle = '';
+    const seenMsgIds = new Map<string, number>();
 
     for (const raw of rawMessages) {
       // Skip empty divider nodes
@@ -248,8 +249,16 @@ export class FreebuffAdapter implements AgentAdapter {
         }
       }
 
+      const baseId = raw.id || `msg-${stepIndex}`;
+      let msgId = baseId;
+      const count = seenMsgIds.get(baseId) || 0;
+      if (count > 0) {
+        msgId = `${baseId}_${count}`;
+      }
+      seenMsgIds.set(baseId, count + 1);
+
       messages.push({
-        id: raw.id || `msg-${stepIndex}`,
+        id: msgId,
         role,
         content: fullContent,
         timestamp: msgTimestamp,

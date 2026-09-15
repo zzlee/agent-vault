@@ -17,7 +17,8 @@ export class VaultDB {
     const finalPath = dbPath || getDbPath();
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
 
-    this.db = new Database(finalPath);
+    this.db = new Database(finalPath, { timeout: 10000 });
+    this.db.pragma('busy_timeout = 10000');
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma('temp_store = MEMORY');
@@ -124,6 +125,12 @@ export class VaultDB {
     this.insertMsgStmt = this.db.prepare(`
       INSERT INTO messages (id, session_id, role, content, timestamp, step_index, has_tool_calls)
       VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        role = excluded.role,
+        content = excluded.content,
+        timestamp = excluded.timestamp,
+        step_index = excluded.step_index,
+        has_tool_calls = excluded.has_tool_calls
     `);
 
     this.insertFtsStmt = this.db.prepare(`
@@ -178,8 +185,18 @@ export class VaultDB {
       this.deleteFtsStmt!.run(session.id);
     }
 
+    const seenMsgIds = new Set<string>();
+
     for (const msg of session.messages) {
-      const globalMsgId = `${session.id}:${msg.id}`;
+      let msgId = msg.id;
+      let globalMsgId = `${session.id}:${msgId}`;
+      let suffix = 1;
+      while (seenMsgIds.has(globalMsgId)) {
+        msgId = `${msg.id}_${suffix++}`;
+        globalMsgId = `${session.id}:${msgId}`;
+      }
+      seenMsgIds.add(globalMsgId);
+
       this.insertMsgStmt!.run(
         globalMsgId,
         session.id,

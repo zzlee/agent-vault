@@ -239,6 +239,7 @@ export class HermesAdapter implements AgentAdapter {
         const messages: NormalizedMessage[] = [];
         let stepIndex = 0;
         let fallbackTitle = '';
+        const seenMsgIds = new Map<string, number>();
 
         for (const m of rawMsgs) {
           let role: MessageRole = 'assistant';
@@ -292,8 +293,16 @@ export class HermesAdapter implements AgentAdapter {
             }
           }
 
+          const baseId = String(m.id);
+          let msgId = baseId;
+          const count = seenMsgIds.get(baseId) || 0;
+          if (count > 0) {
+            msgId = `${baseId}_${count}`;
+          }
+          seenMsgIds.set(baseId, count + 1);
+
           messages.push({
-            id: String(m.id),
+            id: msgId,
             role,
             content: sanitizedContent,
             timestamp: msgTime,
@@ -349,6 +358,7 @@ export class HermesAdapter implements AgentAdapter {
       const messages: NormalizedMessage[] = [];
       let stepIndex = 0;
       let title = '';
+      const seenMsgIds = new Map<string, number>();
 
       for (const line of lines) {
         try {
@@ -366,8 +376,16 @@ export class HermesAdapter implements AgentAdapter {
             title = text.slice(0, 80).replace(/[\r\n]+/g, ' ');
           }
 
+          const baseId = item.id || `msg-${stepIndex}`;
+          let msgId = baseId;
+          const count = seenMsgIds.get(baseId) || 0;
+          if (count > 0) {
+            msgId = `${baseId}_${count}`;
+          }
+          seenMsgIds.set(baseId, count + 1);
+
           messages.push({
-            id: item.id || `msg-${stepIndex}`,
+            id: msgId,
             role,
             content: text,
             timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,

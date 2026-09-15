@@ -96,6 +96,7 @@ export class PiAdapter implements AgentAdapter {
     let updatedAt = '';
     const messages: NormalizedMessage[] = [];
     let stepIndex = 0;
+    const seenMsgIds = new Map<string, number>();
 
     for await (const line of rl) {
       if (!line.trim()) continue;
@@ -148,8 +149,16 @@ export class PiAdapter implements AgentAdapter {
           }
 
           if (textContent.trim()) {
+            const baseId = item.id || `msg_${stepIndex}`;
+            let msgId = baseId;
+            const count = seenMsgIds.get(baseId) || 0;
+            if (count > 0) {
+              msgId = `${baseId}_${count}`;
+            }
+            seenMsgIds.set(baseId, count + 1);
+
             messages.push({
-              id: item.id || `msg_${stepIndex}`,
+              id: msgId,
               role,
               content: sanitizeText(textContent.trim()),
               timestamp: msgTimestamp,
