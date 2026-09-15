@@ -265,6 +265,52 @@ agent-vault serve --port 3847 --host 0.0.0.0
 
 ---
 
+### 📦 Lifecycle Management & Maintenance
+
+As historical sessions accumulate over months of AI agent usage, `agent-vault` provides native lifecycle management to keep Git and SQLite lightweight and fast:
+
+#### `agent-vault archive`
+Moves older conversation sessions out of `data/sessions/` into `data/archive/<agent>/` and removes them from the active SQLite FTS5 search index.
+
+```bash
+# Preview sessions older than 90 days that would be archived
+agent-vault archive --before 90d --dry-run
+
+# Archive all sessions older than 90 days (or specific date)
+agent-vault archive --before 90d
+agent-vault archive --before 2026-06-01
+
+# Archive a specific session
+agent-vault archive -s <session-id>
+```
+
+#### `agent-vault unarchive <session-id>`
+Restores an archived session back into active `data/sessions/` and re-indexes it into SQLite.
+
+```bash
+agent-vault unarchive <session-id>
+```
+
+#### `agent-vault prune`
+Trims oversized tool outputs (such as massive build logs, file listings, test runs) from older sessions while preserving all user and assistant prompts.
+
+```bash
+# Preview how many messages and MBs would be saved
+agent-vault prune --older-than 30d --dry-run
+
+# Trim oversized tool messages (>1500 chars) in sessions older than 30 days
+agent-vault prune --older-than 30d --max-tool-chars 1500
+```
+
+#### `agent-vault vacuum`
+Runs SQLite `VACUUM` to defragment the FTS5 full-text search index and reclaim unused disk space.
+
+```bash
+agent-vault vacuum
+```
+
+---
+
 ## 🏗️ Architecture & Data Model
 
 ```

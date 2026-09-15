@@ -8,6 +8,10 @@ import {
   handleStats,
   handlePush,
   handlePull,
+  handleArchive,
+  handleUnarchive,
+  handlePrune,
+  handleVacuum,
 } from './cli/commands.js';
 import { handleDoctor } from './cli/doctor.js';
 import type { AgentType } from './core/types.js';
@@ -95,6 +99,43 @@ export function createCli(): Command {
     .description('Pull latest conversations from remote Git repository and re-index')
     .action(async () => {
       await handlePull();
+    });
+
+  program
+    .command('archive')
+    .description('Archive older sessions to data/archive/ and remove them from active SQLite index')
+    .option('-b, --before <time>', 'Cutoff time or duration (e.g. 90d, 30d, 2026-06-01)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-s, --session <id>', 'Specific session ID to archive')
+    .option('-d, --dry-run', 'Preview which sessions would be archived without moving them')
+    .action(async (options) => {
+      await handleArchive(options);
+    });
+
+  program
+    .command('unarchive <id>')
+    .description('Restore an archived session back to data/sessions/ and re-index into vault.db')
+    .action(async (id) => {
+      await handleUnarchive(id);
+    });
+
+  program
+    .command('prune')
+    .description('Trim oversized tool outputs from older sessions to reduce disk and database footprint')
+    .option('-o, --older-than <time>', 'Age threshold for pruning (e.g. 30d, 90d, 2026-06-01)', '30d')
+    .option('-m, --max-tool-chars <chars>', 'Maximum tool output character length before truncation', '1500')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-s, --session <id>', 'Specific session ID to prune')
+    .option('-d, --dry-run', 'Preview changes without modifying files or database')
+    .action(async (options) => {
+      await handlePrune(options);
+    });
+
+  program
+    .command('vacuum')
+    .description('Reclaim unused SQLite database space and defragment FTS5 index')
+    .action(async () => {
+      await handleVacuum();
     });
 
   program

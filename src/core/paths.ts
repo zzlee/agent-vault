@@ -50,6 +50,10 @@ export function getDataDir(): string {
   return path.join(getVaultRoot(), 'data', 'sessions');
 }
 
+export function getArchiveDir(): string {
+  return path.join(getVaultRoot(), 'data', 'archive');
+}
+
 export function getDbPath(): string {
   return path.join(getVaultRoot(), '.cache', 'vault.db');
 }

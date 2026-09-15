@@ -255,3 +255,150 @@ export async function handlePull(): Promise<void> {
     process.exit(1);
   }
 }
+
+export async function handleArchive(options: {
+  before?: string;
+  agent?: AgentType;
+  session?: string;
+  dryRun?: boolean;
+}): Promise<void> {
+  const db = new VaultDB();
+  const { LifecycleManager } = await import('../core/lifecycle.js');
+  const mgr = new LifecycleManager(db);
+
+  const prefix = options.dryRun ? pc.yellow('[DRY RUN] ') : '';
+  console.log(pc.cyan(`${prefix}📦 Archiving conversation sessions...`));
+
+  try {
+    const res = await mgr.archive({
+      before: options.before,
+      agent: options.agent,
+      sessionId: options.session,
+      dryRun: options.dryRun,
+    });
+
+    if (res.archivedSessions === 0) {
+      console.log(pc.yellow('No matching sessions found to archive.'));
+      db.close();
+      return;
+    }
+
+    const verb = options.dryRun ? 'Would archive' : 'Archived';
+    console.log(
+      pc.green(
+        `✓ ${verb} ${pc.bold(res.archivedSessions.toLocaleString())} sessions (${res.archivedMessages.toLocaleString()} messages) to data/archive/`
+      )
+    );
+
+    if (res.sessions.length > 0) {
+      console.log(pc.dim('\nArchived sessions:'));
+      for (const s of res.sessions.slice(0, 10)) {
+        console.log(
+          `  • [${pc.cyan(s.agent)}] ${pc.bold(s.id)} - ${s.title.slice(0, 50)} ${pc.dim(`(${s.updatedAt.slice(0, 10)})`)}`
+        );
+      }
+      if (res.sessions.length > 10) {
+        console.log(pc.dim(`    ... and ${res.sessions.length - 10} more`));
+      }
+    }
+
+    if (!options.dryRun) {
+      console.log(pc.dim('\nTip: Use `agent-vault unarchive <session-id>` to restore any archived session.'));
+    }
+  } catch (err: any) {
+    console.error(pc.red(`Archive failed: ${err.message}`));
+  } finally {
+    db.close();
+  }
+}
+
+export async function handleUnarchive(sessionId: string): Promise<void> {
+  const db = new VaultDB();
+  const { LifecycleManager } = await import('../core/lifecycle.js');
+  const mgr = new LifecycleManager(db);
+
+  try {
+    const res = await mgr.unarchive(sessionId);
+    console.log(pc.green(`✓ Successfully unarchived session ${pc.bold(res.sessionId)}!`));
+    console.log(`  • Title: ${res.title}`);
+    console.log(`  • Agent: ${res.agent}`);
+    console.log(`  • Restored to: ${pc.dim(res.filePath)}`);
+    console.log(`  • Re-indexed into local vault.db`);
+  } catch (err: any) {
+    console.error(pc.red(`Unarchive failed: ${err.message}`));
+    process.exit(1);
+  } finally {
+    db.close();
+  }
+}
+
+export async function handlePrune(options: {
+  olderThan?: string;
+  maxToolChars?: string;
+  agent?: AgentType;
+  session?: string;
+  dryRun?: boolean;
+}): Promise<void> {
+  const db = new VaultDB();
+  const { LifecycleManager } = await import('../core/lifecycle.js');
+  const mgr = new LifecycleManager(db);
+
+  const prefix = options.dryRun ? pc.yellow('[DRY RUN] ') : '';
+  const maxChars = options.maxToolChars ? parseInt(options.maxToolChars, 10) : 1500;
+  console.log(pc.cyan(`${prefix}✂️  Pruning oversized tool outputs from sessions (cutoff: ${options.olderThan || '30d'})...`));
+
+  try {
+    const res = await mgr.prune({
+      olderThan: options.olderThan,
+      maxToolChars: maxChars,
+      agent: options.agent,
+      sessionId: options.session,
+      dryRun: options.dryRun,
+    });
+
+    if (res.prunedSessions === 0) {
+      console.log(pc.yellow('Everything is already lean! No oversized tool outputs found to prune.'));
+      db.close();
+      return;
+    }
+
+    const savedMb = (res.bytesSaved / (1024 * 1024)).toFixed(2);
+    const savedKb = (res.bytesSaved / 1024).toFixed(1);
+    const sizeStr = res.bytesSaved > 1024 * 1024 ? `${savedMb} MB` : `${savedKb} KB`;
+
+    const verb = options.dryRun ? 'Would prune' : 'Pruned';
+    console.log(
+      pc.green(
+        `✓ ${verb} ${pc.bold(res.prunedSessions.toLocaleString())} sessions (${res.prunedMessages.toLocaleString()} messages trimmed), saving ${pc.bold(pc.yellow(sizeStr))}!`
+      )
+    );
+  } catch (err: any) {
+    console.error(pc.red(`Prune failed: ${err.message}`));
+  } finally {
+    db.close();
+  }
+}
+
+export async function handleVacuum(): Promise<void> {
+  const db = new VaultDB();
+  const { LifecycleManager } = await import('../core/lifecycle.js');
+  const mgr = new LifecycleManager(db);
+
+  console.log(pc.cyan('🧹 Vacuuming SQLite database and defragmenting FTS5 index...'));
+  try {
+    const res = mgr.vacuum();
+    const beforeMb = (res.beforeBytes / (1024 * 1024)).toFixed(2);
+    const afterMb = (res.afterBytes / (1024 * 1024)).toFixed(2);
+    const reclaimedMb = (res.bytesReclaimed / (1024 * 1024)).toFixed(2);
+
+    console.log(
+      pc.green(
+        `✓ Database vacuum complete!\n  • Before: ${beforeMb} MB\n  • After:  ${afterMb} MB\n  • Reclaimed: ${pc.bold(pc.yellow(`${reclaimedMb} MB`))}`
+      )
+    );
+  } catch (err: any) {
+    console.error(pc.red(`Vacuum failed: ${err.message}`));
+  } finally {
+    db.close();
+  }
+}

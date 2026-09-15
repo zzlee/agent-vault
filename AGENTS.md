@@ -156,4 +156,19 @@ agent-vault pull
 
 # Rebuild local SQLite FTS5 index from data/sessions/
 agent-vault reindex
+
+# Archive older sessions to data/archive/ and remove from active index
+agent-vault archive --before 90d
+agent-vault archive --before 2026-06-01 --dry-run
+agent-vault archive -s <session-id>
+
+# Restore an archived session back to data/sessions/ and active index
+agent-vault unarchive <session-id>
+
+# Prune oversized tool outputs from older sessions to reduce storage
+agent-vault prune --older-than 30d --dry-run
+agent-vault prune --older-than 30d --max-tool-chars 1500
+
+# Reclaim SQLite disk space and defragment FTS5 index
+agent-vault vacuum
 ```

@@ -90,6 +90,7 @@ export class Indexer {
     }
 
     flushBatch();
+    this.db.vacuum();
 
     return { indexedCount, messageCount, errors };
   }

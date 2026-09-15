@@ -230,6 +230,25 @@ export class VaultDB {
     }
   }
 
+  public deleteSession(id: string): void {
+    this.ensurePreparedStatements();
+    const runDelete = () => {
+      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+      this.deleteMessagesStmt!.run(id);
+      this.deleteFtsStmt!.run(id);
+    };
+
+    if (this.db.inTransaction) {
+      runDelete();
+    } else {
+      this.db.transaction(runDelete)();
+    }
+  }
+
+  public vacuum(): void {
+    this.db.exec('VACUUM;');
+  }
+
   public insertSessionsBatch(items: Array<{ session: NormalizedSession; filePath?: string }>, isFresh: boolean = true): void {
     const tx = this.db.transaction(() => {
       for (const item of items) {
