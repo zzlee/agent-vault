@@ -1,6 +1,6 @@
 export type AgentType = 'pi' | 'opencode' | 'agy' | 'freebuff' | 'hermes' | 'codex';
 
-export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'thinking';
 
 export interface NormalizedMessage {
   id: string;

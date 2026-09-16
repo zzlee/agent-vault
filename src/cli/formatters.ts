@@ -69,6 +69,7 @@ export function formatSearchResults(results: SearchResult[]): string {
     if (r.role === 'user') roleBadge = pc.yellow('[USER]');
     else if (r.role === 'assistant') roleBadge = pc.cyan('[ASSISTANT]');
     else if (r.role === 'tool') roleBadge = pc.magenta('[TOOL OUTPUT]');
+    else if (r.role === 'thinking') roleBadge = pc.magenta(pc.bold('🧠 [THINKING]'));
     else if (r.role === 'system') roleBadge = pc.dim('[SYSTEM]');
 
     const dateStr = r.updatedAt ? r.updatedAt.replace('T', ' ').slice(0, 16) : '';
@@ -110,6 +111,7 @@ export function formatSessionDetail(
     if (m.role === 'user') roleBadge = pc.yellow(pc.bold('[USER]'));
     else if (m.role === 'assistant') roleBadge = pc.cyan(pc.bold('[ASSISTANT]'));
     else if (m.role === 'tool') roleBadge = pc.magenta(pc.bold('[TOOL OUTPUT]'));
+    else if (m.role === 'thinking') roleBadge = pc.magenta(pc.bold('🧠 [THINKING]'));
     else if (m.role === 'system') roleBadge = pc.dim('[SYSTEM]');
 
     const toolUseBadge = m.hasToolCalls ? pc.magenta(' 🔧 [TOOL USE]') : '';

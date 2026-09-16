@@ -62,7 +62,7 @@ interface NormalizedSession {
 
 interface NormalizedMessage {
   id: string;
-  role: "user" | "assistant" | "system" | "tool";
+  role: "user" | "assistant" | "system" | "tool" | "thinking";
   content: string;
   timestamp?: string; // ISO 8601
   step_index?: number;
@@ -121,6 +121,7 @@ agent-vault doctor
 # Ingest local sessions into vault (all agents or specific agent)
 agent-vault sync
 agent-vault sync -a freebuff
+agent-vault sync -f # Force re-collecting historical sessions (e.g. to re-extract thinking traces)
 
 # Preview sync without modifying files or database
 agent-vault sync --dry-run
@@ -131,14 +132,16 @@ agent-vault list
 agent-vault list -a agy -l 50
 agent-vault list -w /path/to/workspace
 
-# Full-text search messages using SQLite FTS5 (with optional role filter: user, assistant, tool)
+# Full-text search messages using SQLite FTS5 (with optional role filter: user, assistant, tool, thinking)
 agent-vault search "<query>"
 agent-vault search "error" -a opencode -m thinkpad
 agent-vault search "deploy" -r user
+agent-vault search "complexity" -r thinking
 
 # Inspect or export session transcripts (with optional role or tool filtering)
 agent-vault show <session-id>
 agent-vault show <session-id> -r user
+agent-vault show <session-id> -r thinking
 agent-vault show <session-id> --no-tools
 agent-vault show <session-id> --json
 agent-vault show <session-id> -e session.md

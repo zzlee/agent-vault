@@ -15,7 +15,7 @@ import {
 } from './formatters.js';
 import { formatSearchHtml } from './html-export.js';
 
-export async function handleSync(options: { agent?: AgentType; dryRun?: boolean }): Promise<void> {
+export async function handleSync(options: { agent?: AgentType; dryRun?: boolean; force?: boolean } = {}): Promise<void> {
   const db = new VaultDB();
   const syncer = new Syncer(db);
 

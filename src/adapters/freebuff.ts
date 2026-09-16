@@ -78,7 +78,7 @@ export class FreebuffAdapter implements AgentAdapter {
           const expectedId = `freebuff_${machine.id}_${nativeId}`;
           const existing = options?.existingSessions?.get(expectedId);
 
-          if (existing) {
+          if (!options?.force && existing) {
             const stat = fs.statSync(messagesFile);
             if (stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
               results.push({
@@ -213,7 +213,22 @@ export class FreebuffAdapter implements AgentAdapter {
 
           if (block.type === 'text' && block.content && block.content.trim()) {
             if (block.textType === 'reasoning') {
-              textParts.push(`[Reasoning]\n${block.content.trim()}`);
+              const reasoningContent = sanitizeText(block.content.trim());
+              if (reasoningContent) {
+                const thinkId = `${raw.id || 'msg_' + stepIndex}_thinking`;
+                const count = seenMsgIds.get(thinkId) || 0;
+                const finalThinkId = count > 0 ? `${thinkId}_${count}` : thinkId;
+                seenMsgIds.set(thinkId, count + 1);
+
+                messages.push({
+                  id: finalThinkId,
+                  role: 'thinking',
+                  content: reasoningContent,
+                  timestamp: raw.timestamp ? new Date(raw.timestamp).toISOString() : createdAt,
+                  step_index: stepIndex++,
+                  has_tool_calls: false,
+                });
+              }
             } else {
               textParts.push(block.content.trim());
             }

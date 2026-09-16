@@ -8,6 +8,7 @@ export interface SessionMeta {
 
 export interface CollectOptions {
   existingSessions?: Map<string, SessionMeta>;
+  force?: boolean;
 }
 
 export interface AgentAdapter {

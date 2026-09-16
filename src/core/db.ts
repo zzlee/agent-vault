@@ -115,6 +115,7 @@ export class VaultDB {
       CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace);
       CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
 
       CREATE VIEW IF NOT EXISTS message_view AS
       SELECT m.rowid AS rowid, s.title AS title, s.workspace AS workspace, m.content AS content
@@ -253,22 +254,30 @@ export class VaultDB {
       }
       seenMsgIds.add(globalMsgId);
 
+      let role = msg.role;
+      let content = msg.content;
+      // Backward compatibility for existing data where reasoning was saved with [Reasoning] prefix under assistant
+      if (role === 'assistant' && (content.startsWith('[Reasoning]\n') || content.startsWith('[Reasoning]\r\n'))) {
+        role = 'thinking';
+        content = content.replace(/^\[Reasoning\]\r?\n/, '').trim();
+      }
+
       const info = this.insertMsgStmt!.run(
         globalMsgId,
         session.id,
-        msg.role,
-        msg.content,
+        role,
+        content,
         msg.timestamp || null,
         msg.step_index ?? null,
         msg.has_tool_calls ? 1 : 0
       );
 
-      if (msg.content && msg.content.trim()) {
+      if (content && content.trim()) {
         this.insertFtsStmt!.run(
           info.lastInsertRowid,
           session.session.title || '',
           session.session.workspace || '',
-          msg.content
+          content
         );
       }
     }
@@ -373,8 +382,12 @@ export class VaultDB {
       params.push(`%${options.workspace}%`);
     }
     if (options.role) {
-      sql += ` AND LOWER(m.role) = ?`;
-      params.push(options.role.toLowerCase());
+      if (options.role.toLowerCase() === 'thinking') {
+        sql += ` AND (LOWER(m.role) = 'thinking' OR m.content LIKE '[Reasoning]%')`;
+      } else {
+        sql += ` AND LOWER(m.role) = ?`;
+        params.push(options.role.toLowerCase());
+      }
     }
     if (options.since) {
       sql += ` AND s.updated_at >= ?`;
@@ -446,8 +459,12 @@ export class VaultDB {
       filterParams.push(`%${options.workspace}%`);
     }
     if (options.role) {
-      filterSql += ` AND LOWER(m.role) = ?`;
-      filterParams.push(options.role.toLowerCase());
+      if (options.role.toLowerCase() === 'thinking') {
+        filterSql += ` AND (LOWER(m.role) = 'thinking' OR m.content LIKE '[Reasoning]%')`;
+      } else {
+        filterSql += ` AND LOWER(m.role) = ?`;
+        filterParams.push(options.role.toLowerCase());
+      }
     }
     if (options.since) {
       filterSql += ` AND s.updated_at >= ?`;
@@ -702,8 +719,12 @@ export class VaultDB {
     const msgParams: unknown[] = [id];
 
     if (options.role) {
-      msgSql += ` AND LOWER(role) = ?`;
-      msgParams.push(options.role.toLowerCase());
+      if (options.role.toLowerCase() === 'thinking') {
+        msgSql += ` AND (LOWER(role) = 'thinking' OR content LIKE '[Reasoning]%')`;
+      } else {
+        msgSql += ` AND LOWER(role) = ?`;
+        msgParams.push(options.role.toLowerCase());
+      }
     }
     if (options.noTools) {
       msgSql += ` AND LOWER(role) != 'tool'`;

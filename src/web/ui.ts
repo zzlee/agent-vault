@@ -36,6 +36,9 @@ export function renderWebUiHtml(): string {
       --role-tool-bg: #0f172a;
       --role-tool-border: #1e293b;
       --role-tool-text: #e2e8f0;
+      --role-think-bg: #faf5ff;
+      --role-think-border: #e9d5ff;
+      --role-think-text: #7e22ce;
       
       --mark-bg: #fef08a;
       --mark-text: #854d0e;
@@ -66,6 +69,9 @@ export function renderWebUiHtml(): string {
       --role-tool-bg: #050811;
       --role-tool-border: #1e293b;
       --role-tool-text: #cbd5e1;
+      --role-think-bg: #2e1065;
+      --role-think-border: #581c87;
+      --role-think-text: #d8b4fe;
       
       --mark-bg: #854d0e;
       --mark-text: #fef08a;
@@ -390,6 +396,11 @@ export function renderWebUiHtml(): string {
       color: var(--text-muted);
       border: 1px solid var(--border);
     }
+    .badge-role.thinking {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border-color: rgba(168, 85, 247, 0.3);
+    }
     .card-date {
       font-size: 0.72rem;
       color: var(--text-subtle);
@@ -534,6 +545,10 @@ export function renderWebUiHtml(): string {
       border-color: var(--role-tool-border);
       background-color: var(--role-tool-bg);
     }
+    .message-item.role-thinking {
+      border-color: var(--role-think-border);
+      background-color: var(--role-think-bg);
+    }
     .message-meta-header {
       display: flex;
       align-items: center;
@@ -554,6 +569,7 @@ export function renderWebUiHtml(): string {
     .role-user .message-role-label { color: var(--role-user-text); }
     .role-assistant .message-role-label { color: #38bdf8; }
     .role-tool .message-role-label { color: #a855f7; }
+    .role-thinking .message-role-label { color: var(--role-think-text); }
 
     .message-body {
       padding: 1rem;
@@ -691,6 +707,7 @@ export function renderWebUiHtml(): string {
             <option value="">All Roles</option>
             <option value="user">User</option>
             <option value="assistant">Assistant</option>
+            <option value="thinking">Thinking (CoT)</option>
             <option value="tool">Tool</option>
           </select>
 
@@ -940,7 +957,7 @@ export function renderWebUiHtml(): string {
         const title = item.title || '(untitled)';
         const dateStr = (item.updatedAt || '').replace('T', ' ').slice(0, 16);
         const workspace = item.workspace ? item.workspace.split('/').filter(Boolean).slice(-2).join('/') : '';
-        const role = item.role ? \`<span class="badge-role">\${item.role}</span>\` : '';
+        const role = item.role ? \`<span class="badge-role \${item.role}">\${item.role === 'thinking' ? '🧠 thinking' : item.role}</span>\` : '';
         const isSelected = state.activeSessionId === sessionId;
 
         return \`
@@ -1011,8 +1028,9 @@ export function renderWebUiHtml(): string {
         const rawRole = (m.role || '').toLowerCase();
         const isTool = isToolMsg(m);
         const isUser = rawRole === 'user';
-        const isAsst = !isUser && !isTool;
-        const displayRole = isTool ? 'tool' : rawRole;
+        const isThinking = rawRole === 'thinking' || (!isUser && !isTool && typeof m.content === 'string' && m.content.startsWith('[Reasoning]'));
+        const isAsst = !isUser && !isTool && !isThinking;
+        const displayRole = isTool ? 'tool' : isThinking ? 'thinking' : rawRole;
         const time = m.timestamp ? m.timestamp.replace('T', ' ').slice(11, 19) : '';
         const step = m.stepIndex != null ? \`#\${m.stepIndex}\` : '';
         
@@ -1037,11 +1055,34 @@ export function renderWebUiHtml(): string {
           } else {
             bodyHtml = escapeHtml(m.content);
           }
+        } else if (isThinking) {
+          const isOversized = m.content && m.content.length > 1500;
+          let cleanThinking = typeof m.content === 'string' ? m.content : '';
+          if (cleanThinking.startsWith('[Reasoning]')) {
+            cleanThinking = cleanThinking.replace('[Reasoning]', '').trim();
+          }
+          if (isOversized) {
+            const preview = formatMarkdown(cleanThinking.slice(0, 600));
+            const full = formatMarkdown(cleanThinking);
+            bodyHtml = \`
+              <div class="tool-content-box" data-expanded="false">
+                <div class="tool-text-preview">\${preview}...</div>
+                <div class="tool-text-full" style="display:none;">\${full}</div>
+                <div class="tool-expand-bar">
+                  <button class="tool-expand-btn" onclick="toggleToolExpand(this)">
+                    🧠 Expand reasoning trace (\${cleanThinking.length.toLocaleString()} chars)
+                  </button>
+                </div>
+              </div>
+            \`;
+          } else {
+            bodyHtml = formatMarkdown(cleanThinking);
+          }
         } else {
           bodyHtml = formatMarkdown(m.content);
         }
 
-        const roleLabel = isUser ? '👤 User' : isAsst ? '🤖 Assistant' : (rawRole === 'tool' ? '⚙️ Tool Output' : '⚙️ Tool Call');
+        const roleLabel = isUser ? '👤 User' : isThinking ? '🧠 Thinking' : isAsst ? '🤖 Assistant' : (rawRole === 'tool' ? '⚙️ Tool Output' : '⚙️ Tool Call');
 
         return \`
           <div class="message-item role-\${displayRole}">

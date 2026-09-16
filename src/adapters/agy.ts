@@ -64,7 +64,7 @@ export class AgyAdapter implements AgentAdapter {
         const createdAt = row.last_user_input_time || row.last_modified_time;
 
         // Fast path: If session is unchanged and already indexed, skip reading/parsing transcript.jsonl
-        if (existing && existing.updatedAt === updatedAt) {
+        if (!options?.force && existing && existing.updatedAt === updatedAt) {
           results.push({
             schema_version: '1.0',
             id: expectedId,
@@ -164,6 +164,22 @@ export class AgyAdapter implements AgentAdapter {
           role = 'user';
           textContent = item.content || '';
         } else if (type === 'PLANNER_RESPONSE') {
+          if (item.thinking && typeof item.thinking === 'string' && item.thinking.trim()) {
+            const baseStep = item.step_index ?? currentStep;
+            const thinkId = `agy_${baseStep}_thinking`;
+            const count = seenMsgIds.get(thinkId) || 0;
+            const msgId = count > 0 ? `${thinkId}_${count}` : thinkId;
+            seenMsgIds.set(thinkId, count + 1);
+
+            messages.push({
+              id: msgId,
+              role: 'thinking',
+              content: sanitizeText(item.thinking.trim()),
+              timestamp: item.created_at,
+              step_index: item.step_index ?? currentStep,
+            });
+          }
+
           role = 'assistant';
           textContent = item.content || '';
           if (Array.isArray(item.tool_calls) && item.tool_calls.length > 0) {

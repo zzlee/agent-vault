@@ -70,7 +70,7 @@ export class CodexAdapter implements AgentAdapter {
         const existing = options?.existingSessions?.get(expectedId);
 
         // Incremental sync fast exit
-        if (existing && stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
+        if (!options?.force && existing && stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
           results.push({
             schema_version: '1.0',
             id: existing.id,
@@ -362,14 +362,19 @@ export class CodexAdapter implements AgentAdapter {
             });
           }
 
-          // Reasoning step (optional summary)
-          else if (pt === 'reasoning' && Array.isArray(payload.summary)) {
-            const reasoningTexts = payload.summary
-              .map((s: any) => (s && typeof s.text === 'string' ? s.text.trim() : ''))
-              .filter(Boolean);
+          // Reasoning step (optional summary or text)
+          else if (pt === 'reasoning') {
+            let reasoningTexts: string[] = [];
+            if (Array.isArray(payload.summary)) {
+              reasoningTexts = payload.summary
+                .map((s: any) => (s && typeof s.text === 'string' ? s.text.trim() : ''))
+                .filter(Boolean);
+            } else if (typeof payload.text === 'string' && payload.text.trim()) {
+              reasoningTexts = [payload.text.trim()];
+            }
 
             if (reasoningTexts.length > 0) {
-              const reasoningContent = sanitizeText(`[Reasoning]\n${reasoningTexts.join('\n\n')}`);
+              const reasoningContent = sanitizeText(reasoningTexts.join('\n\n'));
               const baseId = `msg_${stepIndex}`;
               let msgId = baseId;
               const count = seenMsgIds.get(baseId) || 0;
@@ -380,7 +385,7 @@ export class CodexAdapter implements AgentAdapter {
 
               messages.push({
                 id: msgId,
-                role: 'assistant',
+                role: 'thinking',
                 content: reasoningContent,
                 timestamp: ts,
                 step_index: stepIndex++,

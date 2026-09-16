@@ -50,8 +50,9 @@ export class Syncer {
     ];
   }
 
-  async sync(options: { agent?: AgentType; dryRun?: boolean } = {}): Promise<SyncResult> {
+  async sync(options: { agent?: AgentType; dryRun?: boolean; force?: boolean } = {}): Promise<SyncResult> {
     const isDryRun = Boolean(options.dryRun);
+    const isForce = Boolean(options.force);
     const targetAdapters = options.agent
       ? this.adapters.filter((a) => a.name === options.agent)
       : this.adapters;
@@ -101,7 +102,10 @@ export class Syncer {
         }
       }
 
-      const sessions: NormalizedSession[] = await adapter.collect({ existingSessions: existingMap });
+      const sessions: NormalizedSession[] = await adapter.collect({
+        existingSessions: existingMap,
+        force: isForce,
+      });
 
       const details = agentDetails[adapter.name] || {
         newSessions: 0,
@@ -131,6 +135,9 @@ export class Syncer {
         if (!existing || !fs.existsSync(filePath)) {
           isNew = true;
           deltaMsgs = msgCount;
+        } else if (isForce && session.messages.length > 0) {
+          isUpdated = true;
+          deltaMsgs = Math.max(0, session.messages.length - prevCount);
         } else {
           if (session.messages.length > prevCount || session.session.updated_at !== existing.updatedAt) {
             isUpdated = true;

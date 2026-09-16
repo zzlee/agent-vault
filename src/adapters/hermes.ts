@@ -82,7 +82,7 @@ export class HermesAdapter implements AgentAdapter {
           const expectedId = `hermes_${machine.id}_${baseName}`;
           const existing = options?.existingSessions?.get(expectedId);
 
-          if (existing) {
+          if (!options?.force && existing) {
             const stat = fs.statSync(filePath);
             if (stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
               results.push({
@@ -173,6 +173,11 @@ export class HermesAdapter implements AgentAdapter {
       const hasMsgTimestamp = messageCols.includes('timestamp');
       const hasMsgToolCalls = messageCols.includes('tool_calls');
       const hasMsgToolName = messageCols.includes('tool_name');
+      const hasMsgReasoning = messageCols.includes('reasoning_content')
+        ? 'reasoning_content'
+        : messageCols.includes('thinking')
+          ? 'thinking'
+          : null;
 
       const msgStmt = db.prepare(`
         SELECT ${hasMsgId ? 'id' : 'rowid AS id'},
@@ -180,7 +185,8 @@ export class HermesAdapter implements AgentAdapter {
                ${hasMsgContent ? 'content' : "'' AS content"},
                ${hasMsgTimestamp ? 'timestamp' : 'NULL AS timestamp'},
                ${hasMsgToolCalls ? 'tool_calls' : 'NULL AS tool_calls'},
-               ${hasMsgToolName ? 'tool_name' : 'NULL AS tool_name'}
+               ${hasMsgToolName ? 'tool_name' : 'NULL AS tool_name'},
+               ${hasMsgReasoning ? `${hasMsgReasoning} AS reasoning_content` : 'NULL AS reasoning_content'}
         FROM messages
         WHERE session_id = ?
         ORDER BY ${hasMsgTimestamp ? 'timestamp ASC, ' : ''}${hasMsgId ? 'id ASC' : 'rowid ASC'}
@@ -209,7 +215,7 @@ export class HermesAdapter implements AgentAdapter {
         const sessionId = `hermes_${machine.id}_${nativeId}`;
         const existing = options?.existingSessions?.get(sessionId);
 
-        if (existing && existing.updatedAt === updatedAt) {
+        if (!options?.force && existing && existing.updatedAt === updatedAt) {
           sessions.push({
             schema_version: '1.0',
             id: sessionId,
@@ -234,6 +240,7 @@ export class HermesAdapter implements AgentAdapter {
           timestamp: string | number | null;
           tool_calls: string | null;
           tool_name: string | null;
+          reasoning_content?: string | null;
         }>;
 
         const messages: NormalizedMessage[] = [];
@@ -248,6 +255,59 @@ export class HermesAdapter implements AgentAdapter {
           else if (rLower === 'system') role = 'system';
           else if (rLower === 'tool') role = 'tool';
           let rawContent = m.content || '';
+
+          let msgTime: string | undefined;
+          if (m.timestamp) {
+            if (typeof m.timestamp === 'number') {
+              msgTime = new Date(m.timestamp > 1e11 ? m.timestamp : m.timestamp * 1000).toISOString();
+            } else {
+              msgTime = new Date(m.timestamp).toISOString();
+            }
+          }
+
+          // Extract thinking from reasoning_content column if present
+          if (m.reasoning_content && m.reasoning_content.trim()) {
+            const reasoningText = sanitizeText(m.reasoning_content.trim());
+            if (reasoningText) {
+              const thinkId = `${m.id}_thinking`;
+              const count = seenMsgIds.get(thinkId) || 0;
+              const finalThinkId = count > 0 ? `${thinkId}_${count}` : thinkId;
+              seenMsgIds.set(thinkId, count + 1);
+
+              messages.push({
+                id: finalThinkId,
+                role: 'thinking',
+                content: reasoningText,
+                timestamp: msgTime,
+                step_index: stepIndex++,
+                has_tool_calls: false,
+              });
+            }
+          }
+
+          // Extract thinking from <thought> or <thinking> tags
+          if (role === 'assistant' && rawContent) {
+            const thoughtMatch = rawContent.match(/<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/i);
+            if (thoughtMatch) {
+              const thoughtText = sanitizeText(thoughtMatch[1].trim());
+              rawContent = rawContent.replace(thoughtMatch[0], '').trim();
+              if (thoughtText) {
+                const thinkId = `${m.id}_thought`;
+                const count = seenMsgIds.get(thinkId) || 0;
+                const finalThinkId = count > 0 ? `${thinkId}_${count}` : thinkId;
+                seenMsgIds.set(thinkId, count + 1);
+
+                messages.push({
+                  id: finalThinkId,
+                  role: 'thinking',
+                  content: thoughtText,
+                  timestamp: msgTime,
+                  step_index: stepIndex++,
+                  has_tool_calls: false,
+                });
+              }
+            }
+          }
 
           // Format tool calls if present in Hermes schema
           let hasToolCalls = false;
@@ -282,15 +342,6 @@ export class HermesAdapter implements AgentAdapter {
 
           if (!fallbackTitle && role === 'user') {
             fallbackTitle = sanitizedContent.slice(0, 80);
-          }
-
-          let msgTime: string | undefined;
-          if (m.timestamp) {
-            if (typeof m.timestamp === 'number') {
-              msgTime = new Date(m.timestamp > 1e11 ? m.timestamp : m.timestamp * 1000).toISOString();
-            } else {
-              msgTime = new Date(m.timestamp).toISOString();
-            }
           }
 
           const baseId = String(m.id);
@@ -369,11 +420,54 @@ export class HermesAdapter implements AgentAdapter {
           else if (r === 'system') role = 'system';
           else if (r === 'tool') role = 'tool';
 
-          const text = sanitizeText(item.content || item.text || '');
-          if (!text) continue;
+          let text = item.content || item.text || '';
+
+          const explicitThinking = item.reasoning_content || item.thinking || item.thought;
+          if (explicitThinking && typeof explicitThinking === 'string' && explicitThinking.trim()) {
+            const thinkContent = sanitizeText(explicitThinking.trim());
+            const thinkBaseId = `${item.id || 'msg-' + stepIndex}_thinking`;
+            const count = seenMsgIds.get(thinkBaseId) || 0;
+            const msgId = count > 0 ? `${thinkBaseId}_${count}` : thinkBaseId;
+            seenMsgIds.set(thinkBaseId, count + 1);
+
+            messages.push({
+              id: msgId,
+              role: 'thinking',
+              content: thinkContent,
+              timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,
+              step_index: stepIndex++,
+              has_tool_calls: false,
+            });
+          }
+
+          if (role === 'assistant' && typeof text === 'string') {
+            const thoughtMatch = text.match(/<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/i);
+            if (thoughtMatch) {
+              const thoughtContent = sanitizeText(thoughtMatch[1].trim());
+              text = text.replace(thoughtMatch[0], '').trim();
+              if (thoughtContent) {
+                const thinkBaseId = `${item.id || 'msg-' + stepIndex}_thought`;
+                const count = seenMsgIds.get(thinkBaseId) || 0;
+                const msgId = count > 0 ? `${thinkBaseId}_${count}` : thinkBaseId;
+                seenMsgIds.set(thinkBaseId, count + 1);
+
+                messages.push({
+                  id: msgId,
+                  role: 'thinking',
+                  content: thoughtContent,
+                  timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,
+                  step_index: stepIndex++,
+                  has_tool_calls: false,
+                });
+              }
+            }
+          }
+
+          const sanitizedText = sanitizeText(text);
+          if (!sanitizedText) continue;
 
           if (!title && role === 'user') {
-            title = text.slice(0, 80).replace(/[\r\n]+/g, ' ');
+            title = sanitizedText.slice(0, 80).replace(/[\r\n]+/g, ' ');
           }
 
           const baseId = item.id || `msg-${stepIndex}`;
@@ -387,7 +481,7 @@ export class HermesAdapter implements AgentAdapter {
           messages.push({
             id: msgId,
             role,
-            content: text,
+            content: sanitizedText,
             timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,
             step_index: stepIndex++,
             has_tool_calls: Boolean(item.tool_calls || item.tool_call_id),

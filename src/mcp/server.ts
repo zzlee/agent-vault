@@ -27,7 +27,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
   const db = new VaultDB(options.dbPath);
 
   const AgentEnum = z.enum(['pi', 'opencode', 'agy', 'freebuff', 'hermes', 'codex']);
-  const RoleEnum = z.enum(['user', 'assistant', 'tool', 'system']);
+  const RoleEnum = z.enum(['user', 'assistant', 'tool', 'system', 'thinking']);
 
   const AGENT_DESCRIPTIONS: Record<string, string> = {
     pi: 'Pi terminal coding agent (~/.pi/agent/sessions)',
@@ -49,7 +49,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
       ),
       machine: z.string().optional().describe('Filter by machine hostname or machine ID (e.g. thinkpad, desktop)'),
       role: RoleEnum.optional().describe(
-        "Filter by message role: 'user' (user requests/prompts), 'assistant' (AI plans/solutions), 'tool' (terminal command outputs, compiler errors, tool call results)"
+        "Filter by message role: 'user' (user requests/prompts), 'assistant' (AI plans/solutions), 'tool' (terminal command outputs, compiler errors, tool call results), 'thinking' (Chain-of-Thought / reasoning traces)"
       ),
       workspace: z.string().optional().describe('Filter by project directory path or workspace substring (e.g. /home/user/project)'),
       since: z.string().optional().describe('Filter messages updated on or after date (YYYY-MM-DD)'),
@@ -84,7 +84,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     'Retrieve full turn-by-turn conversation messages and execution traces for a specific session ID. Use this after finding relevant sessions with vault_search.',
     {
       sessionId: z.string().describe('Unique session ID (e.g. opencode_machine_ses_xxx, pi_machine_xxx, agy_machine_xxx)'),
-      role: RoleEnum.optional().describe("Filter messages by role: 'user', 'assistant', 'tool'"),
+      role: RoleEnum.optional().describe("Filter messages by role: 'user', 'assistant', 'tool', 'thinking'"),
       noTools: z.boolean().optional().describe('Hide tool execution outputs to view only human-readable discussion'),
     },
     async ({ sessionId, role, noTools }) => {

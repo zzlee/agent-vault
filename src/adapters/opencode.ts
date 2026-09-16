@@ -61,7 +61,7 @@ export class OpenCodeAdapter implements AgentAdapter {
         const updatedAt = new Date(s.time_updated).toISOString();
         const createdAt = new Date(s.time_created).toISOString();
 
-        if (existing && existing.updatedAt === updatedAt) {
+        if (!options?.force && existing && existing.updatedAt === updatedAt) {
           results.push({
             schema_version: '1.0',
             id: expectedId,
@@ -113,13 +113,15 @@ export class OpenCodeAdapter implements AgentAdapter {
 
             const parts = partsByMsg.get(m.id) || [];
             let contentText = '';
+            let thinkingText = '';
             let hasToolCalls = false;
 
             for (const part of parts) {
-              if (part.type === 'text' && typeof part.text === 'string') {
+              if (part.type === 'reasoning' && typeof part.text === 'string' && part.text.trim()) {
+                thinkingText += (thinkingText ? '\n\n' : '') + part.text.trim();
+              } else if (part.type === 'text' && typeof part.text === 'string') {
                 contentText += (contentText ? '\n\n' : '') + part.text;
-              }
-              if (part.type === 'tool' || part.type === 'tool_use' || part.type === 'tool_call') {
+              } else if (part.type === 'tool' || part.type === 'tool_use' || part.type === 'tool_call') {
                 hasToolCalls = true;
                 const toolName = part.tool || part.name || 'tool';
                 const input = part.state?.input || part.input;
@@ -133,6 +135,25 @@ export class OpenCodeAdapter implements AgentAdapter {
                 }
                 contentText += (contentText ? '\n\n' : '') + toolStr;
               }
+            }
+
+            if (thinkingText.trim()) {
+              const thkBaseId = `${m.id}_thinking`;
+              let thkMsgId = thkBaseId;
+              const count = seenMsgIds.get(thkBaseId) || 0;
+              if (count > 0) {
+                thkMsgId = `${thkBaseId}_${count}`;
+              }
+              seenMsgIds.set(thkBaseId, count + 1);
+
+              messages.push({
+                id: thkMsgId,
+                role: 'thinking',
+                content: sanitizeText(thinkingText.trim()),
+                timestamp: new Date(m.time_created).toISOString(),
+                step_index: stepIndex++,
+                has_tool_calls: false,
+              });
             }
 
             if (contentText.trim()) {

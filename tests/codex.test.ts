@@ -118,9 +118,8 @@ describe('CodexAdapter', () => {
     assert.ok(s.messages[0].content.includes('[REDACTED_GITHUB_TOKEN]'));
     assert.ok(!s.messages[0].content.includes('ghp_1234567890'));
 
-    // 2. Reasoning
-    assert.equal(s.messages[1].role, 'assistant');
-    assert.ok(s.messages[1].content.includes('[Reasoning]'));
+    // 2. Reasoning (now first-class thinking role)
+    assert.equal(s.messages[1].role, 'thinking');
     assert.ok(s.messages[1].content.includes('Inspecting repository'));
 
     // 3. Tool call

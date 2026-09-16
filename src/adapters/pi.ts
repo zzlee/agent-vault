@@ -45,7 +45,7 @@ export class PiAdapter implements AgentAdapter {
           const expectedId2 = `pi_${machine.id}_${baseName}`;
           const existing = options?.existingSessions?.get(expectedId1) || options?.existingSessions?.get(expectedId2);
 
-          if (existing && stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
+          if (!options?.force && existing && stat.mtimeMs <= new Date(existing.updatedAt).getTime() + 1000) {
             results.push({
               schema_version: '1.0',
               id: existing.id,
@@ -122,11 +122,14 @@ export class PiAdapter implements AgentAdapter {
           else if (msgRole === 'toolResult' || msgRole === 'tool') role = 'tool';
 
           let textContent = '';
+          let thinkingContent = '';
           let hasToolCalls = false;
 
           if (Array.isArray(rawMsg.content)) {
             for (const part of rawMsg.content) {
-              if (part.type === 'text' && typeof part.text === 'string') {
+              if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
+                thinkingContent += (thinkingContent ? '\n\n' : '') + part.thinking.trim();
+              } else if (part.type === 'text' && typeof part.text === 'string') {
                 textContent += (textContent ? '\n\n' : '') + part.text;
               } else if (part.type === 'toolCall' || part.type === 'toolUse') {
                 hasToolCalls = true;
@@ -142,6 +145,26 @@ export class PiAdapter implements AgentAdapter {
             }
           } else if (typeof rawMsg.content === 'string') {
             textContent = rawMsg.content;
+          }
+
+          // Emit thinking block if present
+          if (thinkingContent.trim()) {
+            const baseId = item.id ? `${item.id}_thinking` : `msg_${stepIndex}_thinking`;
+            let msgId = baseId;
+            const count = seenMsgIds.get(baseId) || 0;
+            if (count > 0) {
+              msgId = `${baseId}_${count}`;
+            }
+            seenMsgIds.set(baseId, count + 1);
+
+            messages.push({
+              id: msgId,
+              role: 'thinking',
+              content: sanitizeText(thinkingContent.trim()),
+              timestamp: msgTimestamp,
+              step_index: stepIndex++,
+              has_tool_calls: false,
+            });
           }
 
           if (role === 'tool' && rawMsg.toolName && !textContent.startsWith('[Tool Result')) {
