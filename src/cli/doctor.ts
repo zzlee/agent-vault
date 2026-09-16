@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import pc from 'picocolors';
 import Database from 'better-sqlite3';
+import fg from 'fast-glob';
 import { getMachineInfo } from '../core/machine.js';
 
 export function handleDoctor(): void {
@@ -145,6 +146,33 @@ export function handleDoctor(): void {
     }
   } else {
     console.log(`   ${pc.gray('○')} Not detected at ${pc.dim(hermesDir)}`);
+  }
+  console.log('');
+
+  // 6. OpenAI Codex CLI Check
+  const codexDir = process.env.CODEX_HOME || path.join(home, '.codex');
+  const codexSessions = path.join(codexDir, 'sessions');
+  console.log(pc.bold('6. OpenAI Codex CLI:'));
+  if (fs.existsSync(codexSessions)) {
+    console.log(`   ${pc.green('✓')} Sessions directory found: ${pc.dim(codexSessions)}`);
+    try {
+      const files = fg.sync('**/*.jsonl', { cwd: codexSessions });
+      console.log(`   ${pc.green('✓')} Format: JSON Lines rollout files (rollout-*.jsonl)`);
+      console.log(`   ${pc.green('✓')} Found ${files.length} rollout session file(s).`);
+
+      const sqliteFiles = fs
+        .readdirSync(codexDir)
+        .filter((f) => f.startsWith('state_') && f.endsWith('.sqlite'));
+      if (sqliteFiles.length > 0) {
+        console.log(`   ${pc.green('✓')} State database detected: ${pc.dim(sqliteFiles[sqliteFiles.length - 1])}`);
+      }
+    } catch (e: any) {
+      console.log(`   ${pc.yellow('⚠')} Error inspecting codex sessions: ${e.message}`);
+    }
+  } else if (fs.existsSync(codexDir)) {
+    console.log(`   ${pc.green('✓')} Codex home directory found: ${pc.dim(codexDir)}`);
+  } else {
+    console.log(`   ${pc.gray('○')} Not detected at ${pc.dim(codexDir)}`);
   }
   console.log('');
 

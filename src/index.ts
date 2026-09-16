@@ -27,7 +27,7 @@ export function createCli(): Command {
   program
     .command('sync')
     .description('Sync conversation histories from local AI agents into vault')
-    .option('-a, --agent <type>', 'Specific agent to sync (pi, opencode, agy, freebuff, hermes)')
+    .option('-a, --agent <type>', 'Specific agent to sync (pi, opencode, agy, freebuff, hermes, codex)')
     .option('-d, --dry-run', 'Preview changes without modifying files or database')
     .action(async (options) => {
       await handleSync({
@@ -39,7 +39,7 @@ export function createCli(): Command {
   program
     .command('list')
     .description('List stored conversation sessions')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes, codex)')
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
     .option('-l, --limit <number>', 'Number of sessions to show', '25')
@@ -50,7 +50,7 @@ export function createCli(): Command {
   program
     .command('search <query>')
     .description('Full-text search messages across all sessions and agents using SQLite FTS5')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes, codex)')
     .option('-r, --role <type>', 'Filter by message role (user, assistant, tool)')
     .option('-m, --machine <name>', 'Filter by machine name or ID')
     .option('-w, --workspace <path>', 'Filter by workspace path')
@@ -105,7 +105,7 @@ export function createCli(): Command {
     .command('archive')
     .description('Archive older sessions to data/archive/ and remove them from active SQLite index')
     .option('-b, --before <time>', 'Cutoff time or duration (e.g. 90d, 30d, 2026-06-01)')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes, codex)')
     .option('-s, --session <id>', 'Specific session ID to archive')
     .option('-d, --dry-run', 'Preview which sessions would be archived without moving them')
     .action(async (options) => {
@@ -124,7 +124,7 @@ export function createCli(): Command {
     .description('Trim oversized tool outputs from older sessions to reduce disk and database footprint')
     .option('-o, --older-than <time>', 'Age threshold for pruning (e.g. 30d, 90d, 2026-06-01)', '30d')
     .option('-m, --max-tool-chars <chars>', 'Maximum tool output character length before truncation', '1500')
-    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes)')
+    .option('-a, --agent <type>', 'Filter by agent (pi, opencode, agy, freebuff, hermes, codex)')
     .option('-s, --session <id>', 'Specific session ID to prune')
     .option('-d, --dry-run', 'Preview changes without modifying files or database')
     .action(async (options) => {

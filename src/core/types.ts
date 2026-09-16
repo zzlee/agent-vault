@@ -1,4 +1,4 @@
-export type AgentType = 'pi' | 'opencode' | 'agy' | 'freebuff' | 'hermes';
+export type AgentType = 'pi' | 'opencode' | 'agy' | 'freebuff' | 'hermes' | 'codex';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 

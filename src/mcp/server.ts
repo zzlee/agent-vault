@@ -24,7 +24,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
 
   const db = new VaultDB(options.dbPath);
 
-  const AgentEnum = z.enum(['pi', 'opencode', 'agy', 'freebuff', 'hermes']);
+  const AgentEnum = z.enum(['pi', 'opencode', 'agy', 'freebuff', 'hermes', 'codex']);
   const RoleEnum = z.enum(['user', 'assistant', 'tool', 'system']);
 
   const AGENT_DESCRIPTIONS: Record<string, string> = {
@@ -33,16 +33,17 @@ export function createMcpServer(options: McpServerOptions = {}) {
     agy: 'Google Antigravity IDE & CLI agent (~/.gemini/antigravity-cli)',
     freebuff: 'Codebuff / Manicode AI project chats (~/.config/manicode)',
     hermes: 'Nous Research Hermes autonomous agent (~/.hermes)',
+    codex: 'OpenAI Codex CLI agent (~/.codex)',
   };
 
   // Tool 1: vault_search
   server.tool(
     'vault_search',
-    'Search historical conversation messages across multiple AI coding agents (pi, opencode, agy, freebuff, hermes) and machines using SQLite FTS5 full-text search. Results include markdown-highlighted snippets, role, workspace, and timestamps.',
+    'Search historical conversation messages across multiple AI coding agents (pi, opencode, agy, freebuff, hermes, codex) and machines using SQLite FTS5 full-text search. Results include markdown-highlighted snippets, role, workspace, and timestamps.',
     {
       query: z.string().describe('Search keyword, error message, command, or technical term'),
       agent: AgentEnum.optional().describe(
-        "Filter by AI agent: 'pi' (Pi terminal agent), 'opencode' (OpenCode assistant), 'agy' (Antigravity IDE/CLI), 'freebuff' (Codebuff/Manicode), 'hermes' (Nous Research agent)"
+        "Filter by AI agent: 'pi' (Pi terminal agent), 'opencode' (OpenCode assistant), 'agy' (Antigravity IDE/CLI), 'freebuff' (Codebuff/Manicode), 'hermes' (Nous Research agent), 'codex' (OpenAI Codex CLI)"
       ),
       machine: z.string().optional().describe('Filter by machine hostname or machine ID (e.g. thinkpad, desktop)'),
       role: RoleEnum.optional().describe(
@@ -134,7 +135,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     'vault_list_sessions',
     'List recent conversation sessions across agents, machines, and workspaces. Useful for exploring available sessions or recent activities.',
     {
-      agent: AgentEnum.optional().describe('Filter by AI agent name (pi, opencode, agy, freebuff, hermes)'),
+      agent: AgentEnum.optional().describe('Filter by AI agent name (pi, opencode, agy, freebuff, hermes, codex)'),
       machine: z.string().optional().describe('Filter by machine name or ID'),
       workspace: z.string().optional().describe('Filter by workspace path substring'),
       limit: z.number().optional().default(20).describe('Max sessions to return (default: 20)'),
@@ -155,7 +156,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 5: vault_get_stats
   server.tool(
     'vault_get_stats',
-    'Get comprehensive statistics on indexed sessions and messages across all AI agents (pi, opencode, agy, freebuff, hermes) and machines.',
+    'Get comprehensive statistics on indexed sessions and messages across all AI agents (pi, opencode, agy, freebuff, hermes, codex) and machines.',
     {},
     async () => {
       const stats = db.getStats();
@@ -177,9 +178,9 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 6: vault_sync
   server.tool(
     'vault_sync',
-    'Trigger a local synchronization of conversation histories from installed local agents (pi, opencode, agy, freebuff, hermes) into the vault database.',
+    'Trigger a local synchronization of conversation histories from installed local agents (pi, opencode, agy, freebuff, hermes, codex) into the vault database.',
     {
-      agent: AgentEnum.optional().describe('Optional specific agent to sync (pi, opencode, agy, freebuff, hermes)'),
+      agent: AgentEnum.optional().describe('Optional specific agent to sync (pi, opencode, agy, freebuff, hermes, codex)'),
     },
     async ({ agent }) => {
       const syncer = new Syncer(db);

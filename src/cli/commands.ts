@@ -43,7 +43,8 @@ export async function handleSync(options: { agent?: AgentType; dryRun?: boolean 
         `${pc.magenta(`opencode: ${result.agentCounts.opencode}`)}, ` +
         `${pc.blue(`agy: ${result.agentCounts.agy}`)}, ` +
         `${pc.yellow(`freebuff: ${result.agentCounts.freebuff}`)}, ` +
-        `${pc.cyan(`hermes: ${result.agentCounts.hermes}`)})`
+        `${pc.cyan(`hermes: ${result.agentCounts.hermes || 0}`)}, ` +
+        `${pc.red(`codex: ${result.agentCounts.codex || 0}`)})`
     )
   );
 

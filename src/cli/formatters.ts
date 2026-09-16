@@ -28,6 +28,7 @@ export function formatSessionList(sessions: SessionSummary[]): string {
     else if (s.agent === 'agy') agentBadge = pc.blue('agy');
     else if (s.agent === 'freebuff') agentBadge = pc.yellow('freebuff');
     else if (s.agent === 'hermes') agentBadge = pc.cyan('hermes');
+    else if (s.agent === 'codex') agentBadge = pc.red('codex');
 
     const title = s.title.length > 35 ? s.title.slice(0, 32) + '...' : s.title;
     const ws = s.workspace ? (s.workspace.length > 25 ? '...' + s.workspace.slice(-22) : s.workspace) : '-';
@@ -62,6 +63,7 @@ export function formatSearchResults(results: SearchResult[]): string {
     else if (r.agent === 'agy') agentBadge = pc.blue(agentBadge);
     else if (r.agent === 'freebuff') agentBadge = pc.yellow(agentBadge);
     else if (r.agent === 'hermes') agentBadge = pc.cyan(agentBadge);
+    else if (r.agent === 'codex') agentBadge = pc.red(agentBadge);
 
     let roleBadge = pc.cyan(`[${r.role.toUpperCase()}]`);
     if (r.role === 'user') roleBadge = pc.yellow('[USER]');
@@ -145,6 +147,7 @@ export function formatSyncDryRun(result: SyncResult): string {
     else if (agent === 'agy') agentBadge = pc.blue('agy');
     else if (agent === 'freebuff') agentBadge = pc.yellow('freebuff');
     else if (agent === 'hermes') agentBadge = pc.cyan('hermes');
+    else if (agent === 'codex') agentBadge = pc.red('codex');
 
     table.push([
       agentBadge,

@@ -6,6 +6,7 @@ import { OpenCodeAdapter } from '../adapters/opencode.js';
 import { AgyAdapter } from '../adapters/agy.js';
 import { FreebuffAdapter } from '../adapters/freebuff.js';
 import { HermesAdapter } from '../adapters/hermes.js';
+import { CodexAdapter } from '../adapters/codex.js';
 import type { AgentType, NormalizedSession } from './types.js';
 import type { VaultDB } from './db.js';
 import { getDataDir } from './paths.js';
@@ -45,6 +46,7 @@ export class Syncer {
       new AgyAdapter(),
       new FreebuffAdapter(),
       new HermesAdapter(),
+      new CodexAdapter(),
     ];
   }
 
@@ -67,6 +69,7 @@ export class Syncer {
       agy: 0,
       freebuff: 0,
       hermes: 0,
+      codex: 0,
     };
 
     const agentDetails: Record<string, AgentSyncStats> = {
@@ -75,6 +78,7 @@ export class Syncer {
       agy: { newSessions: 0, updatedSessions: 0, unchangedSessions: 0, totalSessions: 0, totalMessages: 0, newMessages: 0 },
       freebuff: { newSessions: 0, updatedSessions: 0, unchangedSessions: 0, totalSessions: 0, totalMessages: 0, newMessages: 0 },
       hermes: { newSessions: 0, updatedSessions: 0, unchangedSessions: 0, totalSessions: 0, totalMessages: 0, newMessages: 0 },
+      codex: { newSessions: 0, updatedSessions: 0, unchangedSessions: 0, totalSessions: 0, totalMessages: 0, newMessages: 0 },
     };
 
     for (const adapter of targetAdapters) {

@@ -1,6 +1,6 @@
 # agent-vault 🛡️
 
-> Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, and `hermes`).
+> Unified conversation history aggregator, search engine, and cross-machine vault for AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, `hermes`, and `codex`).
 
 `agent-vault` solves the fragmentation of AI coding conversations. When you work across multiple machines (desktop, laptop, servers) and multiple AI agents, your decision logs, troubleshooting steps, and context are scattered across various formats and directories. `agent-vault` continuously ingests, sanitizes, normalizes, indexes, and synchronizes all sessions into a Git-backed, collision-free vault with instant full-text search and a built-in MCP server.
 
@@ -8,7 +8,7 @@
 
 ## 🌟 Key Features
 
-- 🤖 **5 Supported AI Agents**: Native zero-config adapters for `pi`, `opencode`, `agy` (Antigravity), `freebuff` (Codebuff AI / Manicode), and `hermes` (Nous Research).
+- 🤖 **6 Supported AI Agents**: Native zero-config adapters for `pi`, `opencode`, `agy` (Antigravity), `freebuff` (Codebuff AI / Manicode), `hermes` (Nous Research), and `codex` (OpenAI Codex CLI).
 - 🌐 **Git-Native Multi-Machine Vault**: Collision-free machine naming ensures effortless cross-machine collaboration without Git merge conflicts.
 - ⚡ **Local High-Performance FTS5 Engine**: Local SQLite with Full-Text Search enables sub-millisecond querying across tens of thousands of messages.
 - 🔒 **Automated Secret Sanitization**: Redacts sensitive API keys (OpenAI, Anthropic, Google, AWS, GitHub) and Bearer tokens before writing to Git.
@@ -26,6 +26,7 @@
 | **agy (Antigravity)** | `~/.gemini/antigravity-cli/` | SQLite + JSONL | Queries `conversation_summaries.db` for session index, then parses `brain/<id>/.system_generated/logs/transcript.jsonl` for turn-by-turn history. |
 | **freebuff (Manicode)** | `~/.config/manicode/projects/<project>/chats/` | JSON | Reads `chat-messages.json` (user/assistant blocks & tool calls), `chat-meta.json` (title & counts), and `run-state.json` (workspace). |
 | **hermes (Nous Research)** | `~/.hermes/state.db` | SQLite / JSONL | Reads `sessions` and `messages` tables via dynamic PRAGMA inspection; supports profile paths (`profiles/*/state.db`) and fallback JSONL transcripts. |
+| **codex (OpenAI Codex)** | `~/.codex/sessions/` | JSON Lines + SQLite (`state_*.sqlite`) | Inspects `state_*.sqlite` threads metadata with fallback to `session_meta`. Parses clean user messages from `event_msg`, assistant responses, tool calls (`function_call`), tool outputs (`function_call_output`), and reasoning traces. |
 
 ### Environment Overrides
 
@@ -37,6 +38,7 @@ You can customize search locations or machine identities via environment variabl
 | `AGENT_VAULT_ROOT` | Custom path to the `agent-vault` repository | Auto-detected from script path |
 | `MANICODE_DIR` / `FREEBUFF_DIR` | Custom directory for Freebuff / Manicode data | `~/.config/manicode` |
 | `HERMES_HOME` | Custom home directory for Nous Hermes Agent | `~/.hermes` |
+| `CODEX_HOME` | Custom home directory for OpenAI Codex CLI | `~/.codex` |
 
 ---
 

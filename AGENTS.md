@@ -6,7 +6,7 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 
 ## 1. Project Overview & System Philosophy
 
-`agent-vault` aggregates, normalizes, indexes, and synchronizes conversation histories across multiple AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, and `hermes`) on multiple machines.
+`agent-vault` aggregates, normalizes, indexes, and synchronizes conversation histories across multiple AI coding agents (`pi`, `opencode`, `agy`, `freebuff`, `hermes`, and `codex`) on multiple machines.
 
 ### Dual-Layer Storage Design
 
@@ -30,6 +30,7 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 | **agy (Antigravity)** | `~/.gemini/antigravity-cli/` | SQLite + JSONL | Queries `conversation_summaries.db` for session index, then parses `brain/<id>/.system_generated/logs/transcript.jsonl` for turn-by-turn history. |
 | **freebuff** | `~/.config/manicode/projects/<project>/chats/` | JSON | Reads `chat-messages.json` (user/assistant blocks & tool calls), `chat-meta.json` (title & counts), and `run-state.json` (workspace). |
 | **hermes** | `~/.hermes/state.db` | SQLite / JSONL | Reads `sessions` and `messages` tables via dynamic PRAGMA inspection; supports profile paths (`profiles/*/state.db`) and fallback JSONL transcripts. |
+| **codex** | `~/.codex/sessions/` | JSON Lines + SQLite (`state_*.sqlite`) | Reads thread metadata from `state_*.sqlite` (`threads` table) with graceful fallback to `session_meta`. Parses clean user messages from `event_msg`, assistant responses, tool calls (`function_call`), tool outputs (`function_call_output`), and reasoning traces. |
 
 ---
 
@@ -47,7 +48,7 @@ interface MachineInfo {
 interface NormalizedSession {
   schema_version: "1.0";
   id: string; // Unique ID: e.g. <agent>_<machine.id>_<native_id>
-  agent: "pi" | "opencode" | "agy" | "freebuff" | "hermes";
+  agent: "pi" | "opencode" | "agy" | "freebuff" | "hermes" | "codex";
   machine: MachineInfo;
   session: {
     native_id: string;
