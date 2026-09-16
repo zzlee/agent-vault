@@ -244,8 +244,25 @@ agent-vault reindex
 
 ---
 
-### `agent-vault serve`
-Starts a Streamable HTTP Model Context Protocol (MCP) server over Server-Sent Events (SSE).
+### `agent-vault web`
+Starts the interactive Single-Page Web UI and fast REST API for human developer search:
+- **Interactive Typeahead**: Debounced search (<50ms response on 250k+ messages) with instant local LRU caching.
+- **Facet Filters**: Instant filtering by agent (`pi`, `opencode`, `agy`, `freebuff`, `hermes`, `codex`), role (`user`, `assistant`, `tool`), machine, workspace, and date range.
+- **Conversation Inspector**: Full turn-by-turn chat history stream with markdown formatting, syntax highlighting, collapsible oversized tool logs, and one-click Markdown export.
+- **Completely Offline**: Zero external CDN or internet dependencies; works seamlessly in air-gapped dev environments.
+
+```bash
+# Start Web UI on default port 3333 (http://127.0.0.1:3333)
+agent-vault web
+
+# Start and automatically launch default browser
+agent-vault web --port 8080 --open
+```
+
+---
+
+### `agent-vault serve` (Dual-Mode MCP & Web UI)
+Starts a unified server hosting both the Model Context Protocol (MCP) server for AI agents and the interactive Web UI for humans on the same port:
 
 ```bash
 # Start on default port 3000 (127.0.0.1:3000)
@@ -255,15 +272,12 @@ agent-vault serve
 agent-vault serve --port 3847 --host 0.0.0.0
 ```
 
-#### MCP Endpoints
-- **SSE Stream**: `GET http://127.0.0.1:3000/sse`
-- **Messages**: `POST http://127.0.0.1:3000/messages?sessionId=<uuid>`
-
-#### Tools Exposed to AI Assistants
-1. `vault_search(query, agent?, machine?, workspace?, limit?)`: Full-text search across historical conversations.
-2. `vault_list(agent?, machine?, workspace?, limit?)`: List sessions with metadata.
-3. `vault_get_session(sessionId)`: Retrieve complete session messages and tool traces.
-4. `vault_stats()`: Retrieve statistics across agents and machines.
+#### Endpoints
+- **Interactive Web UI**: `GET http://127.0.0.1:3000/`
+- **Streamable HTTP MCP**: `POST http://127.0.0.1:3000/mcp`
+- **Legacy SSE Endpoint**: `GET http://127.0.0.1:3000/sse`
+- **High-Speed REST API**: `GET http://127.0.0.1:3000/api/search?q=...`
+- **Health Check**: `GET http://127.0.0.1:3000/health`
 
 ---
 

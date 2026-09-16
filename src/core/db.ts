@@ -1,7 +1,7 @@
 import Database, { type Database as DatabaseType, type Statement } from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { NormalizedSession, SearchResult, SessionSummary, WorkspaceSummary } from './types.js';
+import type { NormalizedSession, SearchResult, PagedSearchResult, SessionSummary, WorkspaceSummary } from './types.js';
 import { getDbPath } from './paths.js';
 
 export class VaultDB {
@@ -13,19 +13,28 @@ export class VaultDB {
   private insertMsgStmt?: Statement;
   private insertFtsStmt?: Statement;
 
-  constructor(dbPath?: string) {
+  constructor(dbPath?: string, options?: { readonly?: boolean }) {
     const finalPath = dbPath || getDbPath();
-    fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+    const readonly = options?.readonly ?? false;
+    if (!readonly) {
+      fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+    }
 
-    this.db = new Database(finalPath, { timeout: 10000 });
+    this.db = new Database(finalPath, { timeout: 10000, readonly });
     this.db.pragma('busy_timeout = 10000');
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
+    if (!readonly) {
+      this.db.pragma('journal_mode = WAL');
+      this.db.pragma('synchronous = NORMAL');
+      this.db.pragma('foreign_keys = ON');
+    } else {
+      this.db.pragma('query_only = ON');
+    }
     this.db.pragma('temp_store = MEMORY');
     this.db.pragma('cache_size = -64000');
     this.db.pragma('mmap_size = 268435456');
-    this.db.pragma('foreign_keys = ON');
-    this.initSchema();
+    if (!readonly) {
+      this.initSchema();
+    }
   }
 
   private initSchema(): void {
@@ -382,6 +391,149 @@ export class VaultDB {
     return this.db.prepare(sql).all(...params) as SearchResult[];
   }
 
+  public searchPaged(
+    query: string,
+    options: {
+      agent?: string;
+      machine?: string;
+      workspace?: string;
+      role?: string;
+      page?: number;
+      limit?: number;
+      since?: string;
+      until?: string;
+      highlight?: { open: string; close: string };
+    } = {}
+  ): PagedSearchResult {
+    const page = Math.max(1, options.page || 1);
+    const limit = Math.max(1, Math.min(100, options.limit || 20));
+    const offset = (page - 1) * limit;
+
+    const sanitizedQuery = query
+      .replace(/['"*]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((term) => `"${term}"`)
+      .join(' ');
+
+    if (!sanitizedQuery) {
+      return {
+        results: [],
+        total: 0,
+        page,
+        pageSize: limit,
+        totalPages: 0,
+      };
+    }
+
+    const openTag = options.highlight?.open ?? '<mark>';
+    const closeTag = options.highlight?.close ?? '</mark>';
+
+    let filterSql = '';
+    const filterParams: unknown[] = [];
+
+    if (options.agent) {
+      filterSql += ` AND s.agent = ?`;
+      filterParams.push(options.agent);
+    }
+    if (options.machine) {
+      filterSql += ` AND (s.machine_id LIKE ? OR s.machine_name LIKE ?)`;
+      filterParams.push(`%${options.machine}%`, `%${options.machine}%`);
+    }
+    if (options.workspace) {
+      filterSql += ` AND s.workspace LIKE ?`;
+      filterParams.push(`%${options.workspace}%`);
+    }
+    if (options.role) {
+      filterSql += ` AND LOWER(m.role) = ?`;
+      filterParams.push(options.role.toLowerCase());
+    }
+    if (options.since) {
+      filterSql += ` AND s.updated_at >= ?`;
+      filterParams.push(options.since);
+    }
+    if (options.until) {
+      filterSql += ` AND s.updated_at <= ?`;
+      filterParams.push(options.until);
+    }
+
+    const countSql = `
+      SELECT COUNT(*) AS total
+      FROM search_fts
+      JOIN messages m ON m.rowid = search_fts.rowid
+      JOIN sessions s ON s.id = m.session_id
+      WHERE search_fts MATCH ? ${filterSql}
+    `;
+    const countRow = this.db.prepare(countSql).get(sanitizedQuery, ...filterParams) as { total: number };
+    const total = countRow ? countRow.total : 0;
+    const totalPages = Math.ceil(total / limit);
+
+    if (total === 0 || offset >= total) {
+      return {
+        results: [],
+        total,
+        page,
+        pageSize: limit,
+        totalPages,
+      };
+    }
+
+    const querySql = `
+      SELECT 
+        s.id AS sessionId,
+        s.agent,
+        s.machine_id AS machineId,
+        s.machine_name AS machineName,
+        s.title,
+        s.workspace,
+        s.updated_at AS updatedAt,
+        m.role,
+        snippet(search_fts, -1, ?, ?, '...', 25) AS snippet
+      FROM search_fts
+      JOIN messages m ON m.rowid = search_fts.rowid
+      JOIN sessions s ON s.id = m.session_id
+      WHERE search_fts MATCH ? ${filterSql}
+      ORDER BY rank
+      LIMIT ? OFFSET ?
+    `;
+
+    const results = this.db.prepare(querySql).all(
+      openTag,
+      closeTag,
+      sanitizedQuery,
+      ...filterParams,
+      limit,
+      offset
+    ) as SearchResult[];
+
+    return {
+      results,
+      total,
+      page,
+      pageSize: limit,
+      totalPages,
+    };
+  }
+
+  public listMachines(): Array<{ machineId: string; machineName: string; count: number }> {
+    return this.db.prepare(`
+      SELECT machine_id AS machineId, machine_name AS machineName, COUNT(*) AS count
+      FROM sessions
+      GROUP BY machine_id, machine_name
+      ORDER BY count DESC
+    `).all() as Array<{ machineId: string; machineName: string; count: number }>;
+  }
+
+  public listAgents(): Array<{ agent: string; count: number }> {
+    return this.db.prepare(`
+      SELECT agent, COUNT(*) AS count
+      FROM sessions
+      GROUP BY agent
+      ORDER BY count DESC
+    `).all() as Array<{ agent: string; count: number }>;
+  }
+
   public listWorkspaces(options: { limit?: number; search?: string } = {}): WorkspaceSummary[] {
     const limit = options.limit || 50;
     let sql = `
@@ -446,6 +598,62 @@ export class VaultDB {
     params.push(limit);
 
     return this.db.prepare(sql).all(...params) as SessionSummary[];
+  }
+
+  public listSessionsPaged(
+    options: {
+      agent?: string;
+      machine?: string;
+      workspace?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): { sessions: SessionSummary[]; total: number; page: number; pageSize: number; totalPages: number } {
+    const page = Math.max(1, options.page || 1);
+    const limit = Math.max(1, Math.min(100, options.limit || 25));
+    const offset = (page - 1) * limit;
+
+    let filterSql = '';
+    const params: unknown[] = [];
+
+    if (options.agent) {
+      filterSql += ` AND agent = ?`;
+      params.push(options.agent);
+    }
+    if (options.machine) {
+      filterSql += ` AND (machine_id LIKE ? OR machine_name LIKE ?)`;
+      params.push(`%${options.machine}%`, `%${options.machine}%`);
+    }
+    if (options.workspace) {
+      filterSql += ` AND workspace LIKE ?`;
+      params.push(`%${options.workspace}%`);
+    }
+    if (options.search) {
+      filterSql += ` AND (title LIKE ? OR workspace LIKE ?)`;
+      params.push(`%${options.search}%`, `%${options.search}%`);
+    }
+
+    const countRow = this.db.prepare(`SELECT COUNT(*) AS total FROM sessions WHERE 1=1 ${filterSql}`).get(...params) as { total: number };
+    const total = countRow ? countRow.total : 0;
+    const totalPages = Math.ceil(total / limit);
+
+    if (total === 0 || offset >= total) {
+      return { sessions: [], total, page, pageSize: limit, totalPages };
+    }
+
+    const sql = `
+      SELECT 
+        id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
+        created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount
+      FROM sessions
+      WHERE 1=1 ${filterSql}
+      ORDER BY updated_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const sessions = this.db.prepare(sql).all(...params, limit, offset) as SessionSummary[];
+    return { sessions, total, page, pageSize: limit, totalPages };
   }
 
   public getSessionMeta(id: string): { id: string; updatedAt: string; messageCount: number } | null {

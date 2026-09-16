@@ -146,7 +146,11 @@ agent-vault show <session-id> -e session.md
 # View vault metrics
 agent-vault stats
 
-# Start Model Context Protocol (MCP) Streamable HTTP Server
+# Start interactive Web UI search server in browser
+agent-vault web
+agent-vault web --port 3333 --open
+
+# Start Model Context Protocol (MCP) Streamable HTTP Server & Web UI (Dual-Mode)
 agent-vault serve --port 3000
 
 # Commit and push synced data to remote Git repository

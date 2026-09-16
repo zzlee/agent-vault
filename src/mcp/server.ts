@@ -10,6 +10,8 @@ import { VaultDB } from '../core/db.js';
 import { Syncer } from '../core/syncer.js';
 import type { AgentType } from '../core/types.js';
 
+import { createWebRequestHandler } from '../web/server.js';
+
 export interface McpServerOptions {
   port?: number;
   host?: string;
@@ -284,6 +286,10 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
   // Multi-session tracking for Legacy SSE
   const sseSessions = new Map<string, { transport: SSEServerTransport; server: McpServer; db: VaultDB }>();
 
+  // Web UI and REST API handler (readonly connection for speed and safety)
+  const webDb = new VaultDB(options.dbPath, { readonly: true });
+  const webHandler = createWebRequestHandler(webDb);
+
   const httpServer = http.createServer(async (req, res) => {
     // CORS headers supporting modern MCP Streamable HTTP and SSE
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -300,7 +306,16 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`);
     const pathname = parsedUrl.pathname;
 
-    // Health / Status Check
+    // Web UI (root) & REST API (/api/*)
+    if (
+      pathname.startsWith('/api/') ||
+      ((pathname === '/' || pathname === '/index.html') && (req.headers['accept']?.includes('text/html') || !req.headers['accept']?.includes('application/json')))
+    ) {
+      const handled = await webHandler(req, res);
+      if (handled) return;
+    }
+
+    // Health / Status Check (JSON)
     if (pathname === '/' || pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -412,11 +427,11 @@ export async function startMcpHttpServer(options: McpServerOptions = {}): Promis
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      console.log(pc.bold(pc.cyan('🛡️  Agent Vault MCP Server Started!')));
-      console.log(`   ${pc.green('•')} Listening on:     ${pc.bold(`http://${host}:${port}`)}`);
+      console.log(pc.bold(pc.cyan('🛡️  Agent Vault Server Started!')));
+      console.log(`   ${pc.green('•')} Web UI:          ${pc.bold(pc.underline(`http://${host}:${port}`))}`);
       console.log(`   ${pc.green('•')} Streamable HTTP: ${pc.bold(`http://${host}:${port}/mcp`)}`);
       console.log(`   ${pc.green('•')} SSE Endpoint:   ${pc.bold(`http://${host}:${port}/sse`)}`);
-      console.log(`   ${pc.green('•')} Messages:       ${pc.bold(`http://${host}:${port}/messages`)}`);
+      console.log(`   ${pc.green('•')} REST Search API: ${pc.bold(`http://${host}:${port}/api/search`)}`);
       console.log(`   ${pc.green('•')} Health:         ${pc.bold(`http://${host}:${port}/health`)}`);
       console.log(pc.cyan('\n📋 Recommended AI Agent Configurations:'));
       console.log(`   ${pc.bold('OpenCode')} (in opencode.json):`);

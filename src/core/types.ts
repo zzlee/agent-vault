@@ -45,6 +45,14 @@ export interface SearchResult {
   updatedAt: string;
 }
 
+export interface PagedSearchResult {
+  results: SearchResult[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface SessionSummary {
   id: string;
   agent: AgentType;
@@ -56,6 +64,18 @@ export interface SessionSummary {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+}
+
+export interface SessionDetail {
+  session: SessionSummary;
+  messages: Array<{
+    id: string;
+    role: MessageRole;
+    content: string;
+    timestamp?: string;
+    stepIndex?: number;
+    hasToolCalls?: boolean;
+  }>;
 }
 
 export interface WorkspaceSummary {

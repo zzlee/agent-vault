@@ -158,5 +158,20 @@ export function createCli(): Command {
       });
     });
 
+  program
+    .command('web')
+    .description('Start interactive Web UI search server in browser')
+    .option('-p, --port <port>', 'Port to listen on', '3333')
+    .option('-H, --host <host>', 'Host to bind to', '127.0.0.1')
+    .option('-o, --open', 'Automatically open Web UI in default browser', false)
+    .action(async (options) => {
+      const { startWebServer } = await import('./web/server.js');
+      await startWebServer({
+        port: parseInt(options.port, 10),
+        host: options.host,
+        openBrowser: options.open,
+      });
+    });
+
   return program;
 }
