@@ -506,6 +506,7 @@ export function renderWebUiHtml(): string {
     .messages-stream-container {
       flex: 1;
       overflow-y: auto;
+      min-height: 0;
       padding: 1.5rem 2rem;
       display: flex;
       flex-direction: column;
@@ -514,6 +515,8 @@ export function renderWebUiHtml(): string {
     .message-item {
       display: flex;
       flex-direction: column;
+      flex-shrink: 0;
+      min-height: min-content;
       border-radius: 8px;
       overflow: hidden;
       border: 1px solid var(--border);
@@ -996,7 +999,8 @@ export function renderWebUiHtml(): string {
       viewerDate.textContent = (s.updatedAt || '').replace('T', ' ').slice(0, 16);
       viewerMsgCount.textContent = \`\${data.messages.length} msgs\`;
 
-      const visibleMsgs = state.hideTools ? data.messages.filter(m => m.role !== 'tool') : data.messages;
+      const isToolMsg = (m) => m.role === 'tool' || (typeof m.content === 'string' && m.content.startsWith('[Tool Call:'));
+      const visibleMsgs = state.hideTools ? data.messages.filter(m => !isToolMsg(m)) : data.messages;
 
       if (visibleMsgs.length === 0) {
         messagesContainer.innerHTML = \`<div class="empty-state"><div class="empty-title">No messages to display</div></div>\`;
@@ -1004,17 +1008,18 @@ export function renderWebUiHtml(): string {
       }
 
       messagesContainer.innerHTML = visibleMsgs.map((m, idx) => {
-        const role = m.role.toLowerCase();
-        const isTool = role === 'tool';
-        const isUser = role === 'user';
-        const isAsst = role === 'assistant';
+        const rawRole = (m.role || '').toLowerCase();
+        const isTool = isToolMsg(m);
+        const isUser = rawRole === 'user';
+        const isAsst = !isUser && !isTool;
+        const displayRole = isTool ? 'tool' : rawRole;
         const time = m.timestamp ? m.timestamp.replace('T', ' ').slice(11, 19) : '';
         const step = m.stepIndex != null ? \`#\${m.stepIndex}\` : '';
         
         let bodyHtml = '';
         if (isTool) {
           // Collapse oversized tool messages
-          const isOversized = m.content.length > 1500;
+          const isOversized = m.content && m.content.length > 1500;
           if (isOversized) {
             const preview = escapeHtml(m.content.slice(0, 800));
             const full = escapeHtml(m.content);
@@ -1036,11 +1041,13 @@ export function renderWebUiHtml(): string {
           bodyHtml = formatMarkdown(m.content);
         }
 
+        const roleLabel = isUser ? '👤 User' : isAsst ? '🤖 Assistant' : (rawRole === 'tool' ? '⚙️ Tool Output' : '⚙️ Tool Call');
+
         return \`
-          <div class="message-item role-\${role}">
+          <div class="message-item role-\${displayRole}">
             <div class="message-meta-header">
               <div style="display:flex; align-items:center; gap:0.5rem;">
-                <span class="message-role-label">\${isUser ? '👤 User' : isAsst ? '🤖 Assistant' : '⚙️ Tool Output'}</span>
+                <span class="message-role-label">\${roleLabel}</span>
                 \${step ? \`<span style="color:var(--text-subtle)">\${step}</span>\` : ''}
               </div>
               <span style="color:var(--text-subtle)">\${time}</span>
@@ -1170,6 +1177,8 @@ export function renderWebUiHtml(): string {
     btnToggleTools.addEventListener('click', () => {
       state.hideTools = !state.hideTools;
       btnToggleTools.classList.toggle('active', state.hideTools);
+      const span = btnToggleTools.querySelector('span');
+      if (span) span.textContent = state.hideTools ? '⚙️ Tools Hidden' : '⚙️ Tools';
       if (state.currentSessionData) {
         renderSessionView(state.currentSessionData);
       }
