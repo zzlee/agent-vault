@@ -557,10 +557,91 @@ export function renderWebUiHtml(): string {
       border-bottom: 1px solid var(--border);
       font-size: 0.75rem;
       background: rgba(0, 0, 0, 0.03);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s ease;
+    }
+    .message-meta-header:hover {
+      background: rgba(0, 0, 0, 0.06);
     }
     html.dark .message-meta-header {
       background: rgba(255, 255, 255, 0.03);
     }
+    html.dark .message-meta-header:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .message-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .btn-msg-collapse {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-subtle);
+      font-size: 0.7rem;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      transition: all 0.15s ease;
+    }
+    .btn-msg-collapse:hover {
+      background: var(--bg-surface-active);
+      color: var(--text-main);
+      border-color: var(--border);
+    }
+    .collapse-icon {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-size: 0.65rem;
+    }
+    .message-item.is-collapsed .collapse-icon {
+      transform: rotate(180deg);
+    }
+
+    /* Message body collapsed state: 只留前幾句並漸層淡出 */
+    .message-item.is-collapsed .message-body {
+      max-height: 4.8rem;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+    }
+    .message-item.is-collapsed .message-body:hover {
+      opacity: 0.9;
+    }
+
+    /* 收合時底部出現的展開條 */
+    .msg-collapse-bar {
+      display: none;
+      padding: 0.35rem 1rem;
+      background: rgba(0, 0, 0, 0.04);
+      border-top: 1px dashed var(--border);
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: #38bdf8;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    html.dark .msg-collapse-bar {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .msg-collapse-bar:hover {
+      background: rgba(56, 189, 248, 0.12);
+      text-decoration: underline;
+    }
+    .message-item.is-collapsed .msg-collapse-bar {
+      display: flex;
+    }
+
     .message-role-label {
       font-weight: 700;
       text-transform: uppercase;
@@ -609,28 +690,6 @@ export function renderWebUiHtml(): string {
     .message-body p { margin-bottom: 0.65rem; }
     .message-body p:last-child { margin-bottom: 0; }
     .message-body ul, .message-body ol { margin: 0.5rem 0 0.5rem 1.4rem; }
-
-    /* Tool collapse preview */
-    .tool-expand-bar {
-      padding: 0.4rem 1rem;
-      background: rgba(0, 0, 0, 0.2);
-      border-top: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .tool-expand-btn {
-      background: none;
-      border: none;
-      color: #93c5fd;
-      font-size: 0.78rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-    .tool-expand-btn:hover { text-decoration: underline; }
 
     /* Empty States */
     .empty-state {
@@ -753,6 +812,9 @@ export function renderWebUiHtml(): string {
         </div>
 
         <div class="session-action-btns">
+          <button class="btn-action" id="btn-toggle-collapse" title="收合或展開所有長對話訊息 (只保留前幾句)">
+            <span>🗜️ 收合全部</span>
+          </button>
           <button class="btn-action" id="btn-toggle-tools" title="Toggle Tool outputs on/off">
             <span>⚙️ Tools</span>
           </button>
@@ -789,6 +851,7 @@ export function renderWebUiHtml(): string {
       totalCount: 0,
       activeSessionId: null,
       hideTools: false,
+      collapseAll: false,
       currentSessionData: null,
       lruCache: new Map(), // queryKey -> { data, timestamp }
       activeAbortController: null,
@@ -817,6 +880,7 @@ export function renderWebUiHtml(): string {
     const viewerDate = document.getElementById('viewer-date');
     const viewerMsgCount = document.getElementById('viewer-msgcount');
     const messagesContainer = document.getElementById('messages-container');
+    const btnToggleCollapse = document.getElementById('btn-toggle-collapse');
     const btnToggleTools = document.getElementById('btn-toggle-tools');
     const btnCopyId = document.getElementById('btn-copy-id');
     const btnExportMd = document.getElementById('btn-export-md');
@@ -1036,84 +1100,61 @@ export function renderWebUiHtml(): string {
         
         let bodyHtml = '';
         if (isTool) {
-          // Collapse oversized tool messages
-          const isOversized = m.content && m.content.length > 1500;
-          if (isOversized) {
-            const preview = escapeHtml(m.content.slice(0, 800));
-            const full = escapeHtml(m.content);
-            bodyHtml = \`
-              <div class="tool-content-box" data-expanded="false">
-                <div class="tool-text-preview">\${preview}...</div>
-                <div class="tool-text-full" style="display:none;">\${full}</div>
-                <div class="tool-expand-bar">
-                  <button class="tool-expand-btn" onclick="toggleToolExpand(this)">
-                    ▶ Expand output (\${m.content.length.toLocaleString()} chars)
-                  </button>
-                </div>
-              </div>
-            \`;
-          } else {
-            bodyHtml = escapeHtml(m.content);
-          }
+          bodyHtml = escapeHtml(m.content);
         } else if (isThinking) {
-          const isOversized = m.content && m.content.length > 1500;
           let cleanThinking = typeof m.content === 'string' ? m.content : '';
           if (cleanThinking.startsWith('[Reasoning]')) {
             cleanThinking = cleanThinking.replace('[Reasoning]', '').trim();
           }
-          if (isOversized) {
-            const preview = formatMarkdown(cleanThinking.slice(0, 600));
-            const full = formatMarkdown(cleanThinking);
-            bodyHtml = \`
-              <div class="tool-content-box" data-expanded="false">
-                <div class="tool-text-preview">\${preview}...</div>
-                <div class="tool-text-full" style="display:none;">\${full}</div>
-                <div class="tool-expand-bar">
-                  <button class="tool-expand-btn" onclick="toggleToolExpand(this)">
-                    🧠 Expand reasoning trace (\${cleanThinking.length.toLocaleString()} chars)
-                  </button>
-                </div>
-              </div>
-            \`;
-          } else {
-            bodyHtml = formatMarkdown(cleanThinking);
-          }
+          bodyHtml = formatMarkdown(cleanThinking);
         } else {
           bodyHtml = formatMarkdown(m.content);
         }
 
         const roleLabel = isUser ? '👤 User' : isThinking ? '🧠 Thinking' : isAsst ? '🤖 Assistant' : (rawRole === 'tool' ? '⚙️ Tool Output' : '⚙️ Tool Call');
 
+        const contentStr = typeof m.content === 'string' ? m.content : '';
+        const isCollapsible = contentStr.length > 140 || contentStr.split(String.fromCharCode(10)).length > 3;
+        const isCollapsed = isCollapsible && (state.collapseAll || (isTool && contentStr.length > 300));
+        const lineCount = contentStr.split(String.fromCharCode(10)).length;
+        const charCount = contentStr.length;
+
         return \`
-          <div class="message-item role-\${displayRole}">
-            <div class="message-meta-header">
+          <div class="message-item role-\${displayRole} \${isCollapsed ? 'is-collapsed' : ''}" data-collapsible="\${isCollapsible ? 'true' : 'false'}">
+            <div class="message-meta-header" \${isCollapsible ? 'onclick="toggleMessageCollapse(this.closest(\\\'.message-item\\\'))"' : ''}>
               <div style="display:flex; align-items:center; gap:0.5rem;">
                 <span class="message-role-label">\${roleLabel}</span>
                 \${step ? \`<span style="color:var(--text-subtle)">\${step}</span>\` : ''}
               </div>
-              <span style="color:var(--text-subtle)">\${time}</span>
+              <div class="message-header-right">
+                <span style="color:var(--text-subtle)">\${time}</span>
+                \${isCollapsible ? \`
+                  <button class="btn-msg-collapse" onclick="event.stopPropagation(); toggleMessageCollapse(this.closest(\\\'.message-item\\\'))" title="收合或展開此訊息">
+                    <span class="collapse-icon">▲</span>
+                  </button>
+                \` : ''}
+              </div>
             </div>
-            <div class="message-body">\${bodyHtml}</div>
+            <div class="message-body" onclick="onMessageBodyClick(this)">\${bodyHtml}</div>
+            \${isCollapsible ? \`
+              <div class="msg-collapse-bar" onclick="toggleMessageCollapse(this.closest(\\\'.message-item\\\'))">
+                <span>▶ 展開完整內容 (\${lineCount} 行 / \${charCount.toLocaleString()} 字)</span>
+              </div>
+            \` : ''}
           </div>
         \`;
       }).join('');
     }
 
-    window.toggleToolExpand = function(btn) {
-      const box = btn.closest('.tool-content-box');
-      const isExpanded = box.dataset.expanded === 'true';
-      const preview = box.querySelector('.tool-text-preview');
-      const full = box.querySelector('.tool-text-full');
-      if (isExpanded) {
-        preview.style.display = 'block';
-        full.style.display = 'none';
-        box.dataset.expanded = 'false';
-        btn.textContent = '▶ Expand output';
-      } else {
-        preview.style.display = 'none';
-        full.style.display = 'block';
-        box.dataset.expanded = 'true';
-        btn.textContent = '▼ Collapse output';
+    window.toggleMessageCollapse = function(itemEl) {
+      if (!itemEl || itemEl.dataset.collapsible !== 'true') return;
+      itemEl.classList.toggle('is-collapsed');
+    };
+
+    window.onMessageBodyClick = function(bodyEl) {
+      const itemEl = bodyEl.closest('.message-item');
+      if (itemEl && itemEl.classList.contains('is-collapsed')) {
+        itemEl.classList.remove('is-collapsed');
       }
     };
 
@@ -1213,6 +1254,18 @@ export function renderWebUiHtml(): string {
         state.page++;
         executeSearch();
       }
+    });
+
+    btnToggleCollapse.addEventListener('click', () => {
+      state.collapseAll = !state.collapseAll;
+      btnToggleCollapse.classList.toggle('active', state.collapseAll);
+      const span = btnToggleCollapse.querySelector('span');
+      if (span) span.textContent = state.collapseAll ? '📖 展開全部' : '🗜️ 收合全部';
+
+      const collapsibleItems = messagesContainer.querySelectorAll('.message-item[data-collapsible="true"]');
+      collapsibleItems.forEach((item) => {
+        item.classList.toggle('is-collapsed', state.collapseAll);
+      });
     });
 
     btnToggleTools.addEventListener('click', () => {

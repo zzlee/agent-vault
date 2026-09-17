@@ -85,6 +85,15 @@ describe('Web Server & REST API', () => {
     assert.match(html, /Agent Vault/);
     assert.match(html, /id="search-input"/);
     assert.match(html, /id="results-container"/);
+
+    // Verify embedded client JavaScript is syntactically valid
+    const scriptStart = html.indexOf('<script>') + '<script>'.length;
+    const scriptEnd = html.indexOf('</script>');
+    assert.ok(scriptStart > 0 && scriptEnd > scriptStart);
+    const clientJs = html.substring(scriptStart, scriptEnd);
+    assert.doesNotThrow(() => {
+      new Function(clientJs);
+    }, 'Client JS inside <script> has syntax errors');
   });
 
   test('returns stats at /api/stats', async () => {
