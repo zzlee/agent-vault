@@ -57,11 +57,21 @@ export function handleDoctor(): void {
     console.log(`   ${pc.green('✓')} Database found: ${pc.dim(opencodeDb)}`);
     try {
       const db = new Database(opencodeDb, { readonly: true });
-      const sessionCols = db.prepare(`PRAGMA table_info(session)`).all() as Array<{ name: string }>;
-      const colNames = sessionCols.map((c) => c.name);
-      const countRow = db.prepare(`SELECT COUNT(*) as count FROM session`).get() as { count: number };
-      console.log(`   ${pc.green('✓')} Schema: table 'session' has ${colNames.length} columns (id, title, directory, etc.)`);
-      console.log(`   ${pc.green('✓')} Found ${countRow.count} sessions in database.`);
+      const hasV2 = Boolean(
+        db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='session_v2'`).get()
+      );
+      if (hasV2) {
+        const countRow = db.prepare(`SELECT COUNT(*) as count FROM session_v2`).get() as { count: number };
+        const msgRow = db.prepare(`SELECT COUNT(*) as count FROM session_message`).get() as { count: number };
+        console.log(`   ${pc.green('✓')} Schema: v2 format detected (session_v2 + session_message)`);
+        console.log(`   ${pc.green('✓')} Found ${countRow.count} sessions / ${msgRow.count} messages in database.`);
+      } else {
+        const sessionCols = db.prepare(`PRAGMA table_info(session)`).all() as Array<{ name: string }>;
+        const colNames = sessionCols.map((c) => c.name);
+        const countRow = db.prepare(`SELECT COUNT(*) as count FROM session`).get() as { count: number };
+        console.log(`   ${pc.green('✓')} Schema: v1 format (table 'session' has ${colNames.length} columns)`);
+        console.log(`   ${pc.green('✓')} Found ${countRow.count} sessions in database.`);
+      }
       db.close();
     } catch (e: any) {
       console.log(`   ${pc.yellow('⚠')} Error inspecting opencode.db: ${e.message}`);

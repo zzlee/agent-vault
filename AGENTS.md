@@ -26,7 +26,7 @@ Welcome to **agent-vault**. This document defines the architectural conventions,
 | Agent | Default Storage Location | Format | Extraction Strategy |
 | :--- | :--- | :--- | :--- |
 | **pi coding agent** | `~/.pi/agent/sessions/--<workspace>--/*.jsonl` | JSON Lines (`v3`) | Streams lines using Node `readline`. Parses first `session` turn for metadata and subsequent `message` turns for user/assistant roles and tool calls. |
-| **opencode** | `~/.local/share/opencode/opencode.db` | SQLite (Drizzle ORM) | Read-only connection querying `session`, `message`, and `part` tables. Combines message parts and associates directory workspaces. |
+| **opencode** | `~/.local/share/opencode/opencode.db` | SQLite (Drizzle ORM) | Read-only connection. v2 tables (`session_v2` + `session_message`, seq-ordered turns with embedded reasoning/text/tool content) take precedence; legacy `session`/`message`/`part` tables used as fallback for unmigrated sessions. Combines message parts and associates directory workspaces. |
 | **agy (Antigravity)** | `~/.gemini/antigravity-cli/` | SQLite + JSONL | Queries `conversation_summaries.db` for session index, then parses `brain/<id>/.system_generated/logs/transcript.jsonl` for turn-by-turn history. |
 | **freebuff** | `~/.config/manicode/projects/<project>/chats/` | JSON | Reads `chat-messages.json` (user/assistant blocks & tool calls), `chat-meta.json` (title & counts), and `run-state.json` (workspace). |
 | **hermes** | `~/.hermes/state.db` | SQLite / JSONL | Reads `sessions` and `messages` tables via dynamic PRAGMA inspection; supports profile paths (`profiles/*/state.db`) and fallback JSONL transcripts. |
