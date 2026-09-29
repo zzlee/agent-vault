@@ -286,9 +286,11 @@ export function renderWebUiHtml(): string {
     .sub-filters-row {
       display: flex;
       gap: 0.5rem;
+      flex-wrap: wrap;
     }
     .sub-select, .sub-input {
-      flex: 1;
+      flex: 1 1 0;
+      min-width: 0;
       height: 28px;
       font-size: 0.76rem;
       background: var(--bg-input);
