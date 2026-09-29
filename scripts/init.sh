@@ -32,6 +32,18 @@ else
   echo "✓ Dependencies already installed."
 fi
 
+# 2b. Ensure better-sqlite3 native binding exists
+# (npm v11+ blocks install scripts by default; missing binding causes
+# "Could not locate the bindings file" at runtime, especially after a
+# Node.js upgrade which invalidates prebuilt binaries.)
+if [ ! -f "node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]; then
+  echo "🔧 Native binding for better-sqlite3 missing — building..."
+  if npm install-scripts ls >/dev/null 2>&1; then
+    npm install-scripts approve better-sqlite3 esbuild >/dev/null 2>&1 || true
+  fi
+  npm rebuild better-sqlite3 || npm install --build-from-source better-sqlite3
+fi
+
 # 3. Build project TypeScript -> dist
 echo "🔨 Building project..."
 npm run build
