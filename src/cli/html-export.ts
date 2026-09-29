@@ -261,7 +261,7 @@ export function formatSearchHtml(results: SearchResult[], query: string): string
   <div class="container">
     <header>
       <h1>Search Results</h1>
-      <p>Query: <strong>${sanitizeHtml(query)}</strong> • Found ${results.length} matches</p>
+      <p>Query: <strong>${sanitizeHtml(query)}</strong> • Found ${results.length} conversations</p>
     </header>
 
     <div class="filters">
@@ -319,6 +319,7 @@ export function formatSearchHtml(results: SearchResult[], query: string): string
             <div class="result-badges">
               <span class="badge badge-agent">${r.agent}</span>
               <span class="badge badge-machine">${machine}</span>
+              ${r.matchCount > 1 ? `<span class="badge badge-machine">${r.matchCount} matches</span>` : ''}
             </div>
           </div>
           <div class="result-content">

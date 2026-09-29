@@ -989,7 +989,7 @@ export function renderWebUiHtml(): string {
 
       // Update Header
       if (state.query.trim()) {
-        resultsCountLabel.textContent = \`\${state.totalCount.toLocaleString()} matches\`;
+        resultsCountLabel.textContent = \`\${state.totalCount.toLocaleString()} conversations\`;
       } else {
         resultsCountLabel.textContent = \`\${state.totalCount.toLocaleString()} sessions\`;
       }
@@ -1022,6 +1022,7 @@ export function renderWebUiHtml(): string {
         const dateStr = (item.updatedAt || '').replace('T', ' ').slice(0, 16);
         const workspace = item.workspace ? item.workspace.split('/').filter(Boolean).slice(-2).join('/') : '';
         const role = item.role ? \`<span class="badge-role \${item.role}">\${item.role === 'thinking' ? '🧠 thinking' : item.role}</span>\` : '';
+        const matches = item.matchCount > 1 ? \`<span class="badge-role">\${item.matchCount} matches</span>\` : '';
         const isSelected = state.activeSessionId === sessionId;
 
         return \`
@@ -1030,6 +1031,7 @@ export function renderWebUiHtml(): string {
               <div style="display:flex; align-items:center; gap:0.4rem;">
                 <span class="badge-agent \${agent}">\${agent}</span>
                 \${role}
+                \${matches}
               </div>
               <span class="card-date">\${dateStr}</span>
             </div>

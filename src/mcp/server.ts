@@ -41,7 +41,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 1: vault_search
   server.tool(
     'vault_search',
-    'Search historical conversation messages across multiple AI coding agents (pi, opencode, agy, freebuff, hermes, codex) and machines using SQLite FTS5 full-text search. Results include markdown-highlighted snippets, role, workspace, and timestamps.',
+    'Search historical conversations across multiple AI coding agents (pi, opencode, agy, freebuff, hermes, codex) and machines using SQLite FTS5 full-text search. One result per conversation (deduplicated), each with the best-matching markdown-highlighted snippet, match count, role, workspace, and timestamps.',
     {
       query: z.string().describe('Search keyword, error message, command, or technical term'),
       agent: AgentEnum.optional().describe(
@@ -54,7 +54,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
       workspace: z.string().optional().describe('Filter by project directory path or workspace substring (e.g. /home/user/project)'),
       since: z.string().optional().describe('Filter messages updated on or after date (YYYY-MM-DD)'),
       until: z.string().optional().describe('Filter messages updated on or before date (YYYY-MM-DD)'),
-      limit: z.number().optional().default(15).describe('Maximum matching messages to return (default: 15)'),
+      limit: z.number().optional().default(15).describe('Maximum matching conversations to return (default: 15)'),
     },
     async ({ query, agent, machine, role, workspace, since, until, limit }) => {
       const results = db.search(query, {

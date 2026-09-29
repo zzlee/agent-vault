@@ -22,6 +22,29 @@ export class AgyAdapter implements AgentAdapter {
     return fs.existsSync(this.dbPath);
   }
 
+  private transcriptPathFor(conversationId: string): string | null {
+    // Prefer the untruncated transcript when present; transcript.jsonl may
+    // have truncated fields (marked via `truncated_fields`).
+    const full = path.join(
+      this.baseDir,
+      'brain',
+      conversationId,
+      '.system_generated',
+      'logs',
+      'transcript_full.jsonl'
+    );
+    if (fs.existsSync(full)) return full;
+    const short = path.join(
+      this.baseDir,
+      'brain',
+      conversationId,
+      '.system_generated',
+      'logs',
+      'transcript.jsonl'
+    );
+    return fs.existsSync(short) ? short : null;
+  }
+
   async collect(options?: CollectOptions): Promise<NormalizedSession[]> {
     if (!this.isAvailable()) return [];
 
@@ -82,17 +105,10 @@ export class AgyAdapter implements AgentAdapter {
           continue;
         }
 
-        const transcriptPath = path.join(
-          this.baseDir,
-          'brain',
-          row.conversation_id,
-          '.system_generated',
-          'logs',
-          'transcript.jsonl'
-        );
+        const transcriptPath = this.transcriptPathFor(row.conversation_id);
 
         let messages: NormalizedMessage[] = [];
-        if (fs.existsSync(transcriptPath)) {
+        if (transcriptPath) {
           messages = await this.parseTranscript(transcriptPath);
         }
 
@@ -124,6 +140,10 @@ export class AgyAdapter implements AgentAdapter {
           });
         }
       }
+
+      // Fallback: conversations with a brain transcript but no summaries row
+      // (e.g. orphaned / unindexed conversations) would otherwise be invisible.
+      await this.collectOrphanedTranscripts(machine, options, results);
     } catch {
       // Ignore reading error
     } finally {
@@ -137,6 +157,88 @@ export class AgyAdapter implements AgentAdapter {
     }
 
     return results;
+  }
+
+  /**
+   * Scan brain/ for transcripts missing from conversation_summaries.
+   * Title/workspace fall back to transcript content since no summary row exists.
+   */
+  private async collectOrphanedTranscripts(
+    machine: ReturnType<typeof getMachineInfo>,
+    options: CollectOptions | undefined,
+    results: NormalizedSession[]
+  ): Promise<void> {
+    const brainDir = path.join(this.baseDir, 'brain');
+    if (!fs.existsSync(brainDir)) return;
+
+    const known = new Set(results.map((s) => s.session.native_id));
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(brainDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || known.has(entry.name)) continue;
+      const transcriptPath = this.transcriptPathFor(entry.name);
+      if (!transcriptPath) continue;
+
+      const expectedId = `agy_${machine.id}_${entry.name}`;
+      const existing = options?.existingSessions?.get(expectedId);
+      let statMtime = new Date().toISOString();
+      try {
+        statMtime = fs.statSync(transcriptPath).mtime.toISOString();
+      } catch {
+        // keep default
+      }
+
+      if (!options?.force && existing && existing.updatedAt === statMtime) {
+        // Transcript file unchanged since last sync — keep the indexed version.
+        results.push({
+          schema_version: '1.0',
+          id: expectedId,
+          agent: 'agy',
+          machine,
+          session: {
+            native_id: entry.name,
+            title: '(untitled)',
+            workspace: '',
+            created_at: statMtime,
+            updated_at: statMtime,
+          },
+          messages: new Array(existing.messageCount),
+        });
+        continue;
+      }
+
+      let messages: NormalizedMessage[];
+      try {
+        messages = await this.parseTranscript(transcriptPath);
+      } catch {
+        continue;
+      }
+      if (messages.length === 0) continue;
+
+      const firstUser = messages.find((m) => m.role === 'user');
+      const timestamps = messages.map((m) => m.timestamp).filter(Boolean).sort() as string[];
+      results.push({
+        schema_version: '1.0',
+        id: expectedId,
+        agent: 'agy',
+        machine,
+        session: {
+          native_id: entry.name,
+          title:
+            (firstUser?.content || messages[0].content).slice(0, 60) || `Session ${entry.name.slice(0, 8)}`,
+          workspace: '',
+          // File mtime as updated_at: stable across syncs for incremental skip.
+          created_at: timestamps[0] || statMtime,
+          updated_at: statMtime,
+        },
+        messages,
+      });
+    }
   }
 
   private async parseTranscript(filePath: string): Promise<NormalizedMessage[]> {

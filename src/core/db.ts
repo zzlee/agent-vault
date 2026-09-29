@@ -350,8 +350,47 @@ export class VaultDB {
     const openTag = options.highlight?.open ?? '\x1b[33m\x1b[1m';
     const closeTag = options.highlight?.close ?? '\x1b[0m';
 
-    let sql = `
-      SELECT 
+    // One row per conversation. NOTE: FTS5 snippet()/rank() cannot be used
+    // inside a GROUP BY subquery ("unable to use function snippet in the
+    // requested context"), so this runs in two steps:
+    //   1. grouped session ids + matchCount ordered by best rank;
+    //   2. best-match snippet per session (N small queries, N <= limit).
+    let filterSql = '';
+    const filterParams: unknown[] = [];
+
+    if (options.agent) {
+      filterSql += ` AND s.agent = ?`;
+      filterParams.push(options.agent);
+    }
+    if (options.machine) {
+      filterSql += ` AND (s.machine_id LIKE ? OR s.machine_name LIKE ?)`;
+      filterParams.push(`%${options.machine}%`, `%${options.machine}%`);
+    }
+    if (options.workspace) {
+      filterSql += ` AND s.workspace LIKE ?`;
+      filterParams.push(`%${options.workspace}%`);
+    }
+    let roleFilter = '';
+    const roleParams: unknown[] = [];
+    if (options.role) {
+      if (options.role.toLowerCase() === 'thinking') {
+        roleFilter = ` AND (LOWER(m.role) = 'thinking' OR m.content LIKE '[Reasoning]%')`;
+      } else {
+        roleFilter = ` AND LOWER(m.role) = ?`;
+        roleParams.push(options.role.toLowerCase());
+      }
+    }
+    if (options.since) {
+      filterSql += ` AND s.updated_at >= ?`;
+      filterParams.push(options.since);
+    }
+    if (options.until) {
+      filterSql += ` AND s.updated_at <= ?`;
+      filterParams.push(options.until);
+    }
+
+    const groupSql = `
+      SELECT
         s.id AS sessionId,
         s.agent,
         s.machine_id AS machineId,
@@ -359,49 +398,62 @@ export class VaultDB {
         s.title,
         s.workspace,
         s.updated_at AS updatedAt,
+        COUNT(*) AS matchCount,
+        min(rank) AS bestRank
+      FROM search_fts
+      JOIN messages m ON m.rowid = search_fts.rowid
+      JOIN sessions s ON s.id = m.session_id
+      WHERE search_fts MATCH ? ${filterSql}${roleFilter}
+      GROUP BY s.id
+      ORDER BY bestRank
+      LIMIT ?
+    `;
+
+    const groups = this.db.prepare(groupSql).all(
+      sanitizedQuery,
+      ...filterParams,
+      ...roleParams,
+      limit
+    ) as Array<{
+      sessionId: string;
+      agent: SearchResult['agent'];
+      machineId: string;
+      machineName: string;
+      title: string;
+      workspace?: string;
+      updatedAt: string;
+      matchCount: number;
+    }>;
+
+    const bestStmt = this.db.prepare(`
+      SELECT
         m.role,
         snippet(search_fts, -1, ?, ?, '...', 25) AS snippet
       FROM search_fts
       JOIN messages m ON m.rowid = search_fts.rowid
-      JOIN sessions s ON s.id = m.session_id
-      WHERE search_fts MATCH ?
-    `;
+      WHERE search_fts MATCH ? AND m.session_id = ?${roleFilter}
+      ORDER BY rank
+      LIMIT 1
+    `);
 
-    const params: unknown[] = [openTag, closeTag, sanitizedQuery];
-
-    if (options.agent) {
-      sql += ` AND s.agent = ?`;
-      params.push(options.agent);
-    }
-    if (options.machine) {
-      sql += ` AND (s.machine_id LIKE ? OR s.machine_name LIKE ?)`;
-      params.push(`%${options.machine}%`, `%${options.machine}%`);
-    }
-    if (options.workspace) {
-      sql += ` AND s.workspace LIKE ?`;
-      params.push(`%${options.workspace}%`);
-    }
-    if (options.role) {
-      if (options.role.toLowerCase() === 'thinking') {
-        sql += ` AND (LOWER(m.role) = 'thinking' OR m.content LIKE '[Reasoning]%')`;
-      } else {
-        sql += ` AND LOWER(m.role) = ?`;
-        params.push(options.role.toLowerCase());
-      }
-    }
-    if (options.since) {
-      sql += ` AND s.updated_at >= ?`;
-      params.push(options.since);
-    }
-    if (options.until) {
-      sql += ` AND s.updated_at <= ?`;
-      params.push(options.until);
-    }
-
-    sql += ` ORDER BY rank LIMIT ?`;
-    params.push(limit);
-
-    return this.db.prepare(sql).all(...params) as SearchResult[];
+    return groups.map((g) => {
+      const best = bestStmt.get(openTag, closeTag, sanitizedQuery, g.sessionId, ...roleParams) as {
+        role: SearchResult['role'];
+        snippet: string;
+      };
+      return {
+        sessionId: g.sessionId,
+        agent: g.agent,
+        machineId: g.machineId,
+        machineName: g.machineName,
+        title: g.title,
+        workspace: g.workspace,
+        role: best.role,
+        snippet: best.snippet,
+        updatedAt: g.updatedAt,
+        matchCount: g.matchCount,
+      };
+    });
   }
 
   public searchPaged(
@@ -476,7 +528,7 @@ export class VaultDB {
     }
 
     const countSql = `
-      SELECT COUNT(*) AS total
+      SELECT COUNT(DISTINCT s.id) AS total
       FROM search_fts
       JOIN messages m ON m.rowid = search_fts.rowid
       JOIN sessions s ON s.id = m.session_id
@@ -497,7 +549,7 @@ export class VaultDB {
     }
 
     const querySql = `
-      SELECT 
+      SELECT
         s.id AS sessionId,
         s.agent,
         s.machine_id AS machineId,
@@ -505,24 +557,74 @@ export class VaultDB {
         s.title,
         s.workspace,
         s.updated_at AS updatedAt,
-        m.role,
-        snippet(search_fts, -1, ?, ?, '...', 25) AS snippet
+        COUNT(*) AS matchCount,
+        min(rank) AS bestRank
       FROM search_fts
       JOIN messages m ON m.rowid = search_fts.rowid
       JOIN sessions s ON s.id = m.session_id
       WHERE search_fts MATCH ? ${filterSql}
-      ORDER BY rank
+      GROUP BY s.id
+      ORDER BY bestRank
       LIMIT ? OFFSET ?
     `;
 
-    const results = this.db.prepare(querySql).all(
-      openTag,
-      closeTag,
+    const groups = this.db.prepare(querySql).all(
       sanitizedQuery,
       ...filterParams,
       limit,
       offset
-    ) as SearchResult[];
+    ) as Array<{
+      sessionId: string;
+      agent: SearchResult['agent'];
+      machineId: string;
+      machineName: string;
+      title: string;
+      workspace?: string;
+      updatedAt: string;
+      matchCount: number;
+    }>;
+
+    // Role filter is message-level: restrict the best-snippet lookup to it.
+    let bestRoleFilter = '';
+    const bestRoleParams: unknown[] = [];
+    if (options.role) {
+      if (options.role.toLowerCase() === 'thinking') {
+        bestRoleFilter = ` AND (LOWER(m.role) = 'thinking' OR m.content LIKE '[Reasoning]%')`;
+      } else {
+        bestRoleFilter = ` AND LOWER(m.role) = ?`;
+        bestRoleParams.push(options.role.toLowerCase());
+      }
+    }
+
+    const bestStmt = this.db.prepare(`
+      SELECT
+        m.role,
+        snippet(search_fts, -1, ?, ?, '...', 25) AS snippet
+      FROM search_fts
+      JOIN messages m ON m.rowid = search_fts.rowid
+      WHERE search_fts MATCH ? AND m.session_id = ?${bestRoleFilter}
+      ORDER BY rank
+      LIMIT 1
+    `);
+
+    const results = groups.map((g) => {
+      const best = bestStmt.get(openTag, closeTag, sanitizedQuery, g.sessionId, ...bestRoleParams) as {
+        role: SearchResult['role'];
+        snippet: string;
+      };
+      return {
+        sessionId: g.sessionId,
+        agent: g.agent,
+        machineId: g.machineId,
+        machineName: g.machineName,
+        title: g.title,
+        workspace: g.workspace,
+        role: best.role,
+        snippet: best.snippet,
+        updatedAt: g.updatedAt,
+        matchCount: g.matchCount,
+      };
+    });
 
     return {
       results,

@@ -50,11 +50,11 @@ export function formatSessionList(sessions: SessionSummary[]): string {
 
 export function formatSearchResults(results: SearchResult[]): string {
   if (results.length === 0) {
-    return pc.gray('No matching messages found.');
+    return pc.gray('No matching conversations found.');
   }
 
   const lines: string[] = [];
-  lines.push(pc.bold(pc.green(`Found ${results.length} matching messages:\n`)));
+  lines.push(pc.bold(pc.green(`Found ${results.length} matching conversations:\n`)));
 
   for (const r of results) {
     let agentBadge = `[${r.agent.toUpperCase()}]`;
@@ -73,9 +73,10 @@ export function formatSearchResults(results: SearchResult[]): string {
     else if (r.role === 'system') roleBadge = pc.dim('[SYSTEM]');
 
     const dateStr = r.updatedAt ? r.updatedAt.replace('T', ' ').slice(0, 16) : '';
+    const matchBadge = r.matchCount > 1 ? pc.dim(` ${r.matchCount} matches`) : '';
 
     lines.push(
-      `${agentBadge} ${pc.bold(r.title)} ${pc.gray(`(${r.machineName || r.machineId} • ${dateStr})`)}`
+      `${agentBadge} ${pc.bold(r.title)}${matchBadge} ${pc.gray(`(${r.machineName || r.machineId} • ${dateStr})`)}`
     );
     lines.push(`  ${pc.gray('Session ID:')} ${r.sessionId}`);
     if (r.workspace) {

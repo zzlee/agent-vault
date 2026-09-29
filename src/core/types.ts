@@ -43,6 +43,8 @@ export interface SearchResult {
   role: MessageRole;
   snippet: string;
   updatedAt: string;
+  /** Number of messages in this session matching the query. */
+  matchCount: number;
 }
 
 export interface PagedSearchResult {
