@@ -35,7 +35,7 @@ You can customize search locations or machine identities via environment variabl
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `AGENT_VAULT_MACHINE_NAME` | Custom human-readable alias for this machine | System hostname |
-| `AGENT_VAULT_ROOT` | Custom path to the `agent-vault` repository | Auto-detected from script path |
+| `AGENT_VAULT_DIR` | Custom path to the vault data repository (takes precedence over auto-detection) | Auto-detected from the current working directory or package location |
 | `MANICODE_DIR` / `FREEBUFF_DIR` | Custom directory for Freebuff / Manicode data | `~/.config/manicode` |
 | `HERMES_HOME` | Custom home directory for Nous Hermes Agent | `~/.hermes` |
 | `CODEX_HOME` | Custom home directory for OpenAI Codex CLI | `~/.codex` |
