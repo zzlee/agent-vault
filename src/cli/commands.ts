@@ -14,6 +14,7 @@ import {
   formatSyncDryRun,
 } from './formatters.js';
 import { formatSearchHtml } from './html-export.js';
+import { getVaultRoot } from '../core/paths.js';
 
 export async function handleSync(options: { agent?: AgentType; dryRun?: boolean; force?: boolean } = {}): Promise<void> {
   const db = new VaultDB();
@@ -228,16 +229,17 @@ export async function handlePush(): Promise<void> {
   const machine = getMachineInfo();
   const dateStr = new Date().toISOString().slice(0, 10);
 
+  const vaultRoot = getVaultRoot();
   try {
-    execSync('git add data/', { stdio: 'inherit' });
-    const status = execSync('git status --porcelain data/', { encoding: 'utf-8' });
+    execSync('git add data/', { cwd: vaultRoot, stdio: 'inherit' });
+    const status = execSync('git status --porcelain data/', { cwd: vaultRoot, encoding: 'utf-8' });
     if (!status.trim()) {
       console.log(pc.yellow('Everything up-to-date in data/. Nothing new to push.'));
       return;
     }
 
-    execSync(`git commit -m "sync(vault): ${machine.name} (${machine.id}) conversations at ${dateStr}"`, { stdio: 'inherit' });
-    execSync('git push', { stdio: 'inherit' });
+    execSync(`git commit -m "sync(vault): ${machine.name} (${machine.id}) conversations at ${dateStr}"`, { cwd: vaultRoot, stdio: 'inherit' });
+    execSync('git push', { cwd: vaultRoot, stdio: 'inherit' });
     console.log(pc.green('✓ Successfully pushed conversations to remote repository!'));
   } catch (err: any) {
     console.error(pc.red(`Push failed: ${err.message}`));
@@ -247,8 +249,9 @@ export async function handlePush(): Promise<void> {
 
 export async function handlePull(): Promise<void> {
   console.log(pc.cyan('📥 Pulling updates from Git remote repository...'));
+  const vaultRoot = getVaultRoot();
   try {
-    execSync('git pull', { stdio: 'inherit' });
+    execSync('git pull', { cwd: vaultRoot, stdio: 'inherit' });
     await handleReindex();
     console.log(pc.green('✓ Pull and re-index completed successfully!'));
   } catch (err: any) {
