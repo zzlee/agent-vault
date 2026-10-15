@@ -8,6 +8,18 @@ import type { NormalizedSession, NormalizedMessage } from '../core/types.js';
 import { getMachineInfo } from '../core/machine.js';
 import { sanitizeText } from '../core/sanitizer.js';
 
+/**
+ * Convert agy's SQLite datetime values (e.g. '2026-07-16 02:25:30.552262788+00:00')
+ * into canonical UTC ISO 8601 ('2026-07-16T02:25:30.552Z').
+ * Returns undefined for Go zero-values ('0001-...') and unparseable input,
+ * so callers can fall back to other timestamps instead of storing '0001' dates.
+ */
+function normalizeUtcDateTime(value: string | undefined | null): string | undefined {
+  if (!value || value.startsWith('0001-')) return undefined;
+  const d = new Date(value.replace(' ', 'T'));
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
 export class AgyAdapter implements AgentAdapter {
   readonly name = 'agy' as const;
   private baseDir: string;
@@ -83,8 +95,10 @@ export class AgyAdapter implements AgentAdapter {
           workspace = row.workspace_uris || '';
         }
 
-        const updatedAt = row.last_modified_time;
-        const createdAt = row.last_user_input_time || row.last_modified_time;
+        const lastModifiedIso = normalizeUtcDateTime(row.last_modified_time);
+        const updatedAt = lastModifiedIso ?? new Date().toISOString();
+        const createdAt =
+          normalizeUtcDateTime(row.last_user_input_time) ?? lastModifiedIso ?? new Date().toISOString();
 
         // Fast path: If session is unchanged and already indexed, skip reading/parsing transcript.jsonl
         if (!options?.force && existing && existing.updatedAt === updatedAt) {
@@ -118,7 +132,7 @@ export class AgyAdapter implements AgentAdapter {
             id: 'summary_preview',
             role: 'assistant',
             content: sanitizeText(row.preview),
-            timestamp: row.last_modified_time,
+            timestamp: lastModifiedIso ?? new Date().toISOString(),
             step_index: 0,
           });
         }
@@ -133,8 +147,11 @@ export class AgyAdapter implements AgentAdapter {
               native_id: row.conversation_id,
               title: row.title || row.preview?.slice(0, 60) || `Session ${row.conversation_id.slice(0, 8)}`,
               workspace,
-              created_at: row.last_user_input_time || row.last_modified_time || new Date().toISOString(),
-              updated_at: row.last_modified_time || new Date().toISOString(),
+              created_at:
+                normalizeUtcDateTime(row.last_user_input_time) ??
+                normalizeUtcDateTime(row.last_modified_time) ??
+                new Date().toISOString(),
+              updated_at: normalizeUtcDateTime(row.last_modified_time) ?? new Date().toISOString(),
             },
             messages,
           });
