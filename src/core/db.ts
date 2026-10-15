@@ -803,13 +803,23 @@ export class VaultDB {
     id: string,
     options: { role?: string; noTools?: boolean } = {}
   ): { session: SessionSummary; messages: any[] } | null {
-    const session = this.db.prepare(`
+    let session = this.db.prepare(`
       SELECT 
         id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
         created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount, file_path AS filePath
       FROM sessions
       WHERE id = ?
     `).get(id) as SessionSummary | undefined;
+
+    if (!session) {
+      session = this.db.prepare(`
+        SELECT
+          id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
+          created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount, file_path AS filePath
+        FROM sessions
+        WHERE id LIKE ?
+      `).get(`%${id}%`) as SessionSummary | undefined;
+    }
 
     if (!session) return null;
 
@@ -818,7 +828,7 @@ export class VaultDB {
       FROM messages
       WHERE session_id = ?
     `;
-    const msgParams: unknown[] = [id];
+    const msgParams: unknown[] = [session.id];
 
     if (options.role) {
       if (options.role.toLowerCase() === 'thinking') {
