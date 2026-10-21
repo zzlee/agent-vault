@@ -68,6 +68,17 @@ export interface SessionSummary {
   messageCount: number;
 }
 
+export interface SessionIdCandidate {
+  id: string;
+  agent: AgentType;
+  machineId: string;
+  machineName: string;
+  nativeId: string;
+  title: string;
+  workspace?: string;
+  updatedAt: string;
+}
+
 export interface SessionDetail {
   session: SessionSummary;
   messages: Array<{

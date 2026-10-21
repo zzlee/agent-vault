@@ -81,30 +81,73 @@ export function createMcpServer(options: McpServerOptions = {}) {
   // Tool 2: vault_get_session
   server.tool(
     'vault_get_session',
-    'Retrieve full turn-by-turn conversation messages and execution traces for a specific session ID. Use this after finding relevant sessions with vault_search.',
+    'Retrieve full turn-by-turn conversation messages and execution traces for a specific session ID. Accepts an exact session ID or a unique partial ID / agent-native ID (case-sensitive substring). If a partial ID matches multiple sessions, the candidate list is returned instead. Use vault_search or vault_list_sessions first when unsure of the full ID.',
     {
-      sessionId: z.string().describe('Unique session ID (e.g. opencode_machine_ses_xxx, pi_machine_xxx, agy_machine_xxx)'),
+      sessionId: z.string().describe(
+        'Full session ID (e.g. opencode_machine_ses_xxx, pi_machine_xxx, agy_machine_xxx) or a unique partial/native ID such as "ses_abc123"'
+      ),
       role: RoleEnum.optional().describe("Filter messages by role: 'user', 'assistant', 'tool', 'thinking'"),
       noTools: z.boolean().optional().describe('Hide tool execution outputs to view only human-readable discussion'),
     },
     async ({ sessionId, role, noTools }) => {
-      const data = db.getSession(sessionId, { role, noTools });
+      const requestedId = sessionId.trim();
+
+      // Resolve exact or unique partial identifiers first so ambiguous
+      // partial IDs return candidates instead of an arbitrary session.
+      const { exact, matches } = db.resolveSessionId(requestedId);
+
+      if (matches.length > 1) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  error: `Multiple sessions match "${requestedId}". Please provide a longer or exact session ID.`,
+                  requestedId,
+                  candidates: matches,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      if (matches.length === 0) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Session not found: ${requestedId}`,
+            },
+          ],
+        };
+      }
+
+      const targetId = matches[0].id;
+      const data = db.getSession(targetId, { role, noTools });
       if (!data) {
         return {
           isError: true,
           content: [
             {
               type: 'text',
-              text: `Session not found: ${sessionId}`,
+              text: `Session not found: ${requestedId}`,
             },
           ],
         };
       }
+
+      const payload = exact ? data : { resolvedFrom: requestedId, ...data };
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(data, null, 2),
+            text: JSON.stringify(payload, null, 2),
           },
         ],
       };

@@ -1,7 +1,14 @@
 import Database, { type Database as DatabaseType, type Statement } from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { NormalizedSession, SearchResult, PagedSearchResult, SessionSummary, WorkspaceSummary } from './types.js';
+import type {
+  NormalizedSession,
+  SearchResult,
+  PagedSearchResult,
+  SessionSummary,
+  SessionIdCandidate,
+  WorkspaceSummary,
+} from './types.js';
 import { getDbPath } from './paths.js';
 
 export class VaultDB {
@@ -803,22 +810,22 @@ export class VaultDB {
     id: string,
     options: { role?: string; noTools?: boolean } = {}
   ): { session: SessionSummary; messages: any[] } | null {
-    let session = this.db.prepare(`
+    const selectSessionSql = `
       SELECT 
         id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
         created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount, file_path AS filePath
       FROM sessions
       WHERE id = ?
-    `).get(id) as SessionSummary | undefined;
+    `;
 
+    let session = this.db.prepare(selectSessionSql).get(id) as SessionSummary | undefined;
+
+    // Fall back to a partial/native ID lookup, but only when it is unambiguous.
     if (!session) {
-      session = this.db.prepare(`
-        SELECT
-          id, agent, machine_id AS machineId, machine_name AS machineName, native_id AS nativeId, title, workspace,
-          created_at AS createdAt, updated_at AS updatedAt, message_count AS messageCount, file_path AS filePath
-        FROM sessions
-        WHERE id LIKE ?
-      `).get(`%${id}%`) as SessionSummary | undefined;
+      const { matches } = this.resolveSessionId(id);
+      if (matches.length === 1) {
+        session = this.db.prepare(selectSessionSql).get(matches[0].id) as SessionSummary | undefined;
+      }
     }
 
     if (!session) return null;
@@ -847,6 +854,39 @@ export class VaultDB {
     const messages = this.db.prepare(msgSql).all(...msgParams);
 
     return { session, messages };
+  }
+
+  /**
+   * Resolve a full session ID from an exact or partial identifier.
+   *
+   * Exact IDs take precedence. Otherwise the identifier is matched as a
+   * case-sensitive substring against both the vault session ID and the
+   * agent-native session ID, newest sessions first. Returns `exact: true`
+   * when the identifier matched a session verbatim.
+   */
+  public resolveSessionId(partialId: string): { exact: boolean; matches: SessionIdCandidate[] } {
+    const needle = partialId.trim();
+    if (!needle) return { exact: false, matches: [] };
+
+    const selectSql = `
+      SELECT
+        id, agent, machine_id AS machineId, machine_name AS machineName,
+        native_id AS nativeId, title, workspace, updated_at AS updatedAt
+      FROM sessions
+      WHERE `;
+
+    const exact = this.db.prepare(`${selectSql}id = ?`).get(needle) as SessionIdCandidate | undefined;
+    if (exact) return { exact: true, matches: [exact] };
+
+    // Escape LIKE wildcards so user input is treated literally.
+    const escaped = needle.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const matches = this.db.prepare(`
+      ${selectSql}(id LIKE ? ESCAPE '\\' OR native_id LIKE ? ESCAPE '\\')
+      ORDER BY updated_at DESC
+      LIMIT 20
+    `).all(`%${escaped}%`, `%${escaped}%`) as SessionIdCandidate[];
+
+    return { exact: false, matches };
   }
 
   public getStats(): { totalSessions: number; totalMessages: number; agents: Record<string, number>; machines: Record<string, number> } {
